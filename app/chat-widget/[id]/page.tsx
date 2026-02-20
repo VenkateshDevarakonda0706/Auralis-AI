@@ -25,6 +25,11 @@ interface ChatMessage {
   timestamp: Date
 }
 
+type HistoryMessage = {
+  role: "user" | "model"
+  parts: string[]
+}
+
 declare global {
   interface Window {
     SpeechRecognition: any
@@ -38,6 +43,7 @@ export default function ChatWidgetPage() {
   const [isClient, setIsClient] = useState(false)
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [chatHistory, setChatHistory] = useState<HistoryMessage[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -56,9 +62,6 @@ export default function ChatWidgetPage() {
   const agentId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : ''
   const agent = agents.find(a => a.id === agentId)
 
-  // Initialize Google GenAI
-  const ai = new (window as any).GoogleGenerativeAI("YOUR_GEMINI_API_KEY")
-
   useEffect(() => {
     setIsClient(true)
   }, [])
@@ -66,6 +69,13 @@ export default function ChatWidgetPage() {
   // Initialize conversation
   useEffect(() => {
     if (!agent) return
+
+    const initialHistory: HistoryMessage[] = [
+      { role: "user", parts: [`System instruction: ${agent.prompt || "You are a helpful AI assistant."}`] },
+      { role: "model", parts: [agent.firstMessage || "Hello! How can I help you today?"] },
+    ]
+
+    setChatHistory(initialHistory)
 
     const firstMessage: ChatMessage = {
       id: "first-message",
@@ -180,26 +190,27 @@ export default function ChatWidgetPage() {
   }
 
   // Generate AI response
-  async function generateAIResponse(userInput: string) {
+  async function generateAIResponse(userInput: string, nextHistory: HistoryMessage[]) {
     try {
-      const model = ai.getGenerativeModel({ model: "gemini-2.0-flash-exp" })
-      
-      const chat = model.startChat({
-        history: [
-          {
-            role: "user",
-            parts: [{ text: agent?.prompt || "You are a helpful AI assistant." }],
-          },
-          {
-            role: "model",
-            parts: [{ text: agent?.firstMessage || "Hello! How can I help you today?" }],
-          },
-        ],
+      const response = await fetch("/api/generate-response", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userInput,
+          agentPrompt: agent?.prompt || "You are a helpful AI assistant.",
+          history: nextHistory,
+        }),
       })
 
-      const result = await chat.sendMessage(userInput)
-      const response = await result.response
-      return sanitizeResponse(response.text())
+      const payload = await response.json()
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to generate response")
+      }
+
+      return sanitizeResponse(payload.text || "")
     } catch (error) {
       console.error("Error generating AI response:", error)
       throw error
@@ -249,7 +260,10 @@ export default function ChatWidgetPage() {
     setIsGenerating(true)
 
     try {
-      const aiResponse = await generateAIResponse(currentInput)
+      const nextHistory = [...chatHistory, { role: "user" as const, parts: [currentInput] }]
+      const aiResponse = await generateAIResponse(currentInput, nextHistory)
+      const finalHistory = [...nextHistory, { role: "model" as const, parts: [aiResponse] }]
+      setChatHistory(finalHistory)
 
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
