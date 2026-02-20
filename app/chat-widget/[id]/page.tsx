@@ -57,6 +57,8 @@ export default function ChatWidgetPage() {
   const recognitionRef = useRef<any>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const aiAbortControllerRef = useRef<AbortController | null>(null)
+  const ttsAbortControllerRef = useRef<AbortController | null>(null)
 
   // Get agent from URL params
   const agentId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : ''
@@ -191,12 +193,14 @@ export default function ChatWidgetPage() {
 
   // Generate AI response
   async function generateAIResponse(userInput: string, nextHistory: HistoryMessage[]) {
+    const signal = aiAbortControllerRef.current?.signal
     try {
       const response = await fetch("/api/generate-response", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal,
         body: JSON.stringify({
           message: userInput,
           agentPrompt: agent?.prompt || "You are a helpful AI assistant.",
@@ -219,12 +223,14 @@ export default function ChatWidgetPage() {
 
   // Convert text to speech
   async function convertToSpeech(outputText: string) {
+    const signal = ttsAbortControllerRef.current?.signal
     try {
       const response = await fetch("/api/text-to-speech", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal,
         body: JSON.stringify({
           text: outputText,
           voiceId: agent?.voiceId || "en-US-terrell",
@@ -260,6 +266,11 @@ export default function ChatWidgetPage() {
     setIsGenerating(true)
 
     try {
+      aiAbortControllerRef.current?.abort()
+      ttsAbortControllerRef.current?.abort()
+      aiAbortControllerRef.current = new AbortController()
+      ttsAbortControllerRef.current = new AbortController()
+
       const nextHistory = [...chatHistory, { role: "user" as const, parts: [currentInput] }]
       const aiResponse = await generateAIResponse(currentInput, nextHistory)
       const finalHistory = [...nextHistory, { role: "model" as const, parts: [aiResponse] }]
@@ -287,6 +298,14 @@ export default function ChatWidgetPage() {
         handlePlayAudio(audioUrl)
       }, 500)
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setIsGenerating(false)
+        setIsGeneratingAudio(false)
+        aiAbortControllerRef.current = null
+        ttsAbortControllerRef.current = null
+        return
+      }
+
       console.error("Error sending message:", error)
       toast({
         title: "Error",
@@ -295,7 +314,30 @@ export default function ChatWidgetPage() {
       })
       setIsGenerating(false)
       setIsGeneratingAudio(false)
+      aiAbortControllerRef.current = null
+      ttsAbortControllerRef.current = null
     }
+  }
+
+  function stopCurrentResponse() {
+    aiAbortControllerRef.current?.abort()
+    ttsAbortControllerRef.current?.abort()
+    aiAbortControllerRef.current = null
+    ttsAbortControllerRef.current = null
+
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+
+    setIsGenerating(false)
+    setIsGeneratingAudio(false)
+    setIsPlaying(false)
+
+    toast({
+      title: "Response stopped",
+      description: "You can send a new message now.",
+    })
   }
 
   // Handle audio playback
@@ -403,13 +445,31 @@ export default function ChatWidgetPage() {
                 <div className="mt-2 flex items-center gap-2">
                   <Button
                     onClick={() => handlePlayAudio(message.audioUrl)}
+                    disabled={isPlaying && currentAudioUrl === message.audioUrl}
                     size="sm"
                     variant="outline"
-                    className="border-white/20 text-gray-300 hover:bg-white/10 bg-transparent"
+                    className="border-white/20 text-gray-300 hover:bg-white/10 bg-transparent disabled:bg-green-500/20 disabled:text-green-300"
                   >
                     <Play className="w-3 h-3 mr-1" />
-                    Play
+                    {isPlaying && currentAudioUrl === message.audioUrl ? "Playing..." : "Play"}
                   </Button>
+                  {isPlaying && currentAudioUrl === message.audioUrl && (
+                    <Button
+                      onClick={() => {
+                        if (audioRef.current) {
+                          audioRef.current.pause()
+                          audioRef.current.currentTime = 0
+                        }
+                        setIsPlaying(false)
+                      }}
+                      size="sm"
+                      variant="outline"
+                      className="border-red-500/30 text-red-300 hover:bg-red-500/20 bg-transparent"
+                    >
+                      <Square className="w-3 h-3 mr-1" />
+                      Stop
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -461,7 +521,7 @@ export default function ChatWidgetPage() {
           />
           <Button
             onClick={toggleListening}
-            disabled={isGenerating}
+            disabled={isGenerating || isGeneratingAudio}
             variant="outline"
             className={`border-white/20 text-gray-300 hover:bg-white/10 bg-transparent flex-shrink-0 ${
               isListening ? 'bg-red-500/20 border-red-500/30 text-red-300' : ''
@@ -473,13 +533,22 @@ export default function ChatWidgetPage() {
               <Mic className="w-4 h-4" />
             )}
           </Button>
-          <Button
-            onClick={handleSendMessage}
-            disabled={!input.trim() || isGenerating}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0 flex-shrink-0"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
+          {isGenerating || isGeneratingAudio ? (
+            <Button
+              onClick={stopCurrentResponse}
+              className="bg-red-600 hover:bg-red-700 text-white border-0 flex-shrink-0"
+            >
+              <Square className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSendMessage}
+              disabled={!input.trim()}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0 flex-shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </div>
 

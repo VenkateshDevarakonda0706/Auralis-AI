@@ -9,3 +9,5 @@ node_modules/
 .env.local
 dist/
 build/
+PROJECT_COMPLETION_REPORT.md
+VERCEL_DEPLOYMENT_GUIDE.md

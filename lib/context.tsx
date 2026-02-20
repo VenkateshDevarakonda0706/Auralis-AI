@@ -302,6 +302,7 @@ export function AppProvider({ children }: AppProviderProps) {
         name: email.split('@')[0],
         plan: 'free',
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         lastLogin: new Date().toISOString(),
       }
 
@@ -456,7 +457,8 @@ export function AppProvider({ children }: AppProviderProps) {
           id: conv.id,
           agentId: conv.agentId,
           messages: [],
-          startedAt: new Date(conv.startedAt),
+          startedAt: conv.startedAt,
+          messageCount: (conv as any).messageCount || 0,
         }))
         dispatch({ type: 'SET_CONVERSATIONS', payload: conversations })
       }

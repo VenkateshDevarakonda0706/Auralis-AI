@@ -6,6 +6,8 @@ export interface User {
   avatar?: string
   createdAt: string
   updatedAt: string
+  plan?: string
+  lastLogin?: string
 }
 
 export interface Agent {

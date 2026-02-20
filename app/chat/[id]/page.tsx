@@ -37,6 +37,8 @@ export default function ChatPage() {
   const recognitionRef = useRef<any>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoResumeListeningRef = useRef(false)
+  const aiAbortControllerRef = useRef<AbortController | null>(null)
+  const ttsAbortControllerRef = useRef<AbortController | null>(null)
 
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -113,10 +115,11 @@ export default function ChatPage() {
     }
   }
 
-  async function requestAIResponse(nextHistory: HistoryMessage[]) {
+  async function requestAIResponse(nextHistory: HistoryMessage[], signal: AbortSignal) {
     const response = await fetch("/api/generate-response", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal,
       body: JSON.stringify({
         message: nextHistory[nextHistory.length - 1]?.parts?.[0] || "",
         agentPrompt: systemPrompt,
@@ -132,10 +135,11 @@ export default function ChatPage() {
     return payload.text as string
   }
 
-  async function requestSpeech(text: string) {
+  async function requestSpeech(text: string, signal: AbortSignal) {
     const response = await fetch("/api/text-to-speech", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal,
       body: JSON.stringify({
         text,
         voiceId: agent?.voiceId || "en-US-terrell",
@@ -172,8 +176,12 @@ export default function ChatPage() {
     setIsGenerating(true)
 
     try {
+      aiAbortControllerRef.current?.abort()
+      ttsAbortControllerRef.current?.abort()
+      aiAbortControllerRef.current = new AbortController()
+
       const nextHistory = [...chatHistory, { role: "user" as const, parts: [text] }]
-      const aiText = await requestAIResponse(nextHistory)
+      const aiText = await requestAIResponse(nextHistory, aiAbortControllerRef.current.signal)
       const finalHistory = [...nextHistory, { role: "model" as const, parts: [aiText] }]
 
       setChatHistory(finalHistory)
@@ -189,7 +197,8 @@ export default function ChatPage() {
       setIsGenerating(false)
       setIsGeneratingAudio(true)
 
-      const audioUrl = await requestSpeech(aiText)
+      ttsAbortControllerRef.current = new AbortController()
+      const audioUrl = await requestSpeech(aiText, ttsAbortControllerRef.current.signal)
       setMessages((prev) => prev.map((msg) => (msg.id === aiMessage.id ? { ...msg, audioUrl } : msg)))
       setCurrentAudioUrl(audioUrl)
       setIsGeneratingAudio(false)
@@ -198,8 +207,22 @@ export default function ChatPage() {
         handlePlayAudio(audioUrl)
       }, 250)
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setIsGenerating(false)
+        setIsGeneratingAudio(false)
+        aiAbortControllerRef.current = null
+        ttsAbortControllerRef.current = null
+
+        if (isAutoMode) {
+          startListening()
+        }
+        return
+      }
+
       setIsGenerating(false)
       setIsGeneratingAudio(false)
+      aiAbortControllerRef.current = null
+      ttsAbortControllerRef.current = null
 
       toast({
         title: "Error",
@@ -210,6 +233,31 @@ export default function ChatPage() {
       if (isAutoMode) {
         startListening()
       }
+    }
+  }
+
+  function stopCurrentResponse() {
+    aiAbortControllerRef.current?.abort()
+    ttsAbortControllerRef.current?.abort()
+    aiAbortControllerRef.current = null
+    ttsAbortControllerRef.current = null
+
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+
+    setIsGenerating(false)
+    setIsGeneratingAudio(false)
+    setIsPlaying(false)
+
+    toast({
+      title: "Response stopped",
+      description: "You can send a new message now.",
+    })
+
+    if (isAutoMode) {
+      startListening()
     }
   }
 
@@ -350,6 +398,7 @@ export default function ChatPage() {
                 width={32}
                 height={24}
                 className="w-8 h-6 object-contain"
+                suppressHydrationWarning
               />
               <span className="text-xl font-bold text-white">Auralis AI</span>
             </div>
@@ -396,13 +445,28 @@ export default function ChatPage() {
                 >
                   <p className="text-sm break-words">{message.text}</p>
                   {message.audioUrl && !message.isUser && (
-                    <div className="mt-2">
+                    <div className="mt-2 flex gap-2">
                       <button
                         onClick={() => handlePlayAudio(message.audioUrl)}
-                        className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors"
+                        disabled={isPlaying && currentAudioUrl === message.audioUrl}
+                        className="text-xs bg-white/20 hover:bg-white/30 disabled:bg-green-500/40 px-2 py-1 rounded transition-colors"
                       >
-                        🔊 Play
+                        {isPlaying && currentAudioUrl === message.audioUrl ? "▶️ Playing" : "🔊 Play"}
                       </button>
+                      {isPlaying && currentAudioUrl === message.audioUrl && (
+                        <button
+                          onClick={() => {
+                            if (audioRef.current) {
+                              audioRef.current.pause()
+                              audioRef.current.currentTime = 0
+                            }
+                            setIsPlaying(false)
+                          }}
+                          className="text-xs bg-red-500/40 hover:bg-red-500/60 px-2 py-1 rounded transition-colors text-red-100"
+                        >
+                          ⏹️ Stop
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -456,13 +520,22 @@ export default function ChatPage() {
                 className="flex-1 bg-black/20 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-gray-400 resize-none"
                 rows={1}
               />
-              <button
-                onClick={() => void sendMessage(input)}
-                disabled={isGenerating || isGeneratingAudio || !input.trim()}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isGenerating || isGeneratingAudio ? "..." : "Send"}
-              </button>
+              {isGenerating || isGeneratingAudio ? (
+                <button
+                  onClick={stopCurrentResponse}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={() => void sendMessage(input)}
+                  disabled={!input.trim()}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Send
+                </button>
+              )}
             </div>
           </div>
         </div>
