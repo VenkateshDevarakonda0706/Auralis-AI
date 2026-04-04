@@ -227,7 +227,7 @@ git push origin feature/amazing-feature
 
 # 5. Open a Pull Request
 ```
-
+<!--
 ## 📞 Support & Community
 
 | Channel | Link |
@@ -236,8 +236,9 @@ git push origin feature/amazing-feature
 | 💬 **Discord** | [Join Community](https://discord.gg/auralis-ai) |
 | 📧 **Email** | support@auralis-ai.com |
 | 📖 **Docs** | [Documentation](https://docs.auralis-ai.com) |
+-->
 
-## 🎉 Major Project 2025
+## 🎉 Major Project 2026
 
 Built as a Major Project submission showcasing the power of combining:
 - ✅ **Real-time Voice AI** — Expressive TTS
@@ -246,7 +247,8 @@ Built as a Major Project submission showcasing the power of combining:
 - ✅ **Beautiful UX** — Modern, intuitive interface
 
 ---
-
+<!--
 **Made with ❤️ by [Pravehaspa](https://github.com/Pravehaspa)**
+-->
 
 *Transform your ideas into voice experiences with Auralis AI* 🚀
