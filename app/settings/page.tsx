@@ -26,6 +26,7 @@ import {
 import Link from "next/link"
 import Image from "next/image"
 import { useApp } from "@/lib/context"
+import { type AppSettings } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 
 export default function SettingsPage() {
@@ -33,7 +34,7 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleSettingChange = (key: string, value: any) => {
+  const handleSettingChange = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     updateSettings({ [key]: value })
   }
 
@@ -188,7 +189,7 @@ export default function SettingsPage() {
                   </Label>
                   <Select
                     value={settings.theme}
-                    onValueChange={(value) => handleSettingChange("theme", value)}
+                    onValueChange={(value) => handleSettingChange("theme", value as AppSettings["theme"])}
                   >
                     <SelectTrigger className="bg-black/20 border-white/20 text-white">
                       <SelectValue />

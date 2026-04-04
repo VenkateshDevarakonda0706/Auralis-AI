@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
     unoptimized: true,
+  },
+  turbopack: {},
+  experimental: {
+    optimizePackageImports: ["lucide-react", "date-fns"],
   },
   // Minimal webpack config to avoid issues
   webpack: (config) => {

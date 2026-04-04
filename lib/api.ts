@@ -40,10 +40,10 @@ class ApiClient {
   }
 
   // AI Response Generation
-  async generateResponse(message: string, agentPrompt?: string): Promise<ApiResponse<{ text: string }>> {
+  async generateResponse(message: string, agentPrompt?: string, agentCategory?: string): Promise<ApiResponse<{ text: string }>> {
     return this.request<{ text: string }>('/generate-response', {
       method: 'POST',
-      body: JSON.stringify({ message, agentPrompt }),
+      body: JSON.stringify({ message, agentPrompt, agentCategory }),
     })
   }
 

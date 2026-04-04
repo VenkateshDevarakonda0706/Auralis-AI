@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -65,6 +66,16 @@ const testimonials = [
 ]
 
 export default function HomePage() {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900" />
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       {/* Navigation */}
@@ -78,6 +89,7 @@ export default function HomePage() {
                 width={40}
                 height={30}
                 className="w-10 h-7 object-contain"
+                suppressHydrationWarning
               />
               <span className="text-2xl font-bold text-white">Auralis AI</span>
             </div>

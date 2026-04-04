@@ -159,6 +159,9 @@ export default function Dashboard() {
               <Link href="/create" className="text-gray-300 hover:text-white transition-colors">
                 Create
               </Link>
+              <Link href="/monitoring" className="text-gray-300 hover:text-white transition-colors">
+                Monitoring
+              </Link>
             </div>
             <div className="flex gap-3">
               <Button 
@@ -177,6 +180,12 @@ export default function Dashboard() {
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
               </Button>
+              <Link href="/monitoring">
+                <Button variant="outline" className="border-white/20 text-gray-300 hover:bg-white/10 bg-transparent">
+                  <Code className="w-4 h-4 mr-2" />
+                  Monitoring
+                </Button>
+              </Link>
               <Link href="/create">
                 <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0">
                   <Plus className="w-4 h-4 mr-2" />

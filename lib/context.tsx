@@ -1,7 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react'
-import { Agent, User, Conversation, Analytics } from './types'
+import { Agent, User, Conversation, Analytics, AppSettings } from './types'
 import { storage } from './storage'
 import { api } from './api'
 
@@ -34,7 +34,7 @@ type AppAction =
   | { type: 'ADD_CONVERSATION'; payload: Conversation }
   | { type: 'SET_ANALYTICS'; payload: Analytics }
   | { type: 'UPDATE_ANALYTICS'; payload: Partial<Analytics> }
-  | { type: 'UPDATE_SETTINGS'; payload: Partial<AppState['settings']> }
+  | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
   | { type: 'CLEAR_DATA' }
 
 // Initial state
@@ -302,6 +302,7 @@ export function AppProvider({ children }: AppProviderProps) {
         name: email.split('@')[0],
         plan: 'free',
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         lastLogin: new Date().toISOString(),
       }
 
@@ -456,7 +457,8 @@ export function AppProvider({ children }: AppProviderProps) {
           id: conv.id,
           agentId: conv.agentId,
           messages: [],
-          startedAt: new Date(conv.startedAt),
+          startedAt: String(conv.startedAt),
+          messageCount: conv.messageCount ?? 0,
         }))
         dispatch({ type: 'SET_CONVERSATIONS', payload: conversations })
       }
@@ -525,7 +527,7 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, [])
 
-  const updateSettings = useCallback((settings: Partial<AppState['settings']>) => {
+  const updateSettings = useCallback((settings: Partial<AppSettings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: settings })
   }, [])
 

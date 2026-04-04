@@ -1,6 +1,6 @@
 "use client"
 
-import { Agent, User, Conversation, Analytics } from './types'
+import { Agent, User, Conversation, Analytics, AppSettings } from './types'
 
 const STORAGE_KEYS = {
   AGENTS: 'elite_ai_agents',
@@ -143,11 +143,16 @@ class StorageManager {
   }
 
   // Settings
-  getSettings(): Record<string, any> {
-    return this.getItem<Record<string, any>>(STORAGE_KEYS.SETTINGS) || {}
+  getSettings(): AppSettings {
+    return this.getItem<AppSettings>(STORAGE_KEYS.SETTINGS) || {
+      theme: 'system',
+      autoMode: true,
+      voicePreview: true,
+      notifications: true,
+    }
   }
 
-  saveSettings(settings: Record<string, any>): boolean {
+  saveSettings(settings: AppSettings): boolean {
     return this.setItem(STORAGE_KEYS.SETTINGS, settings)
   }
 
@@ -163,15 +168,15 @@ class StorageManager {
     }
   }
 
-  exportData(): Record<string, any> {
-    const data: Record<string, any> = {}
+  exportData(): Record<string, unknown> {
+    const data: Record<string, unknown> = {}
     Object.entries(STORAGE_KEYS).forEach(([key, value]) => {
       data[key] = this.getItem(value)
     })
     return data
   }
 
-  importData(data: Record<string, any>): boolean {
+  importData(data: Record<string, unknown>): boolean {
     try {
       Object.entries(data).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {

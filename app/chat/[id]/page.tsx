@@ -33,24 +33,59 @@ export default function ChatPage() {
   const { toast } = useToast()
   const { agents } = useApp()
 
-  const audioRef = useRef<HTMLAudioElement>(null)
+  const messageAudioRefs = useRef<Record<string, HTMLAudioElement | null>>({})
+  const currentAudioRef = useRef<{ messageId: string; audio: HTMLAudioElement } | null>(null)
   const recognitionRef = useRef<any>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const shouldAutoResumeListeningRef = useRef(false)
+  const speechActionRef = useRef<"none" | "pause" | "stop" | "restart">("none")
+  const speechSilenceBufferTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const speechSilenceFinalizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noInputTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const speechInputDetectedRef = useRef(false)
+  const isVoiceAutoSendRef = useRef(true)
+  const speechFinalBufferRef = useRef("")
+  const speechComposedRef = useRef("")
+  const interimTranscriptRef = useRef("")
+  const queuedMessageRef = useRef<string | null>(null)
+  const lastSubmitRef = useRef<{ text: string; at: number } | null>(null)
+  const runtimeStateRef = useRef({
+    isAutoMode: true,
+    isGenerating: false,
+    isGeneratingAudio: false,
+    anyAudioPlaying: false,
+  })
 
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [chatHistory, setChatHistory] = useState<HistoryMessage[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentAudioUrl, setCurrentAudioUrl] = useState("")
-  const [isAutoMode, setIsAutoMode] = useState(false)
+  const [audioState, setAudioState] = useState<Record<string, { isPlaying: boolean; isPaused: boolean }>>({})
+  const [isAutoMode, setIsAutoMode] = useState(true)
+  const [isVoiceAutoSend, setIsVoiceAutoSend] = useState(true)
   const [isListening, setIsListening] = useState(false)
+  const [isListeningPaused, setIsListeningPaused] = useState(false)
   const [isSpeechSupported, setIsSpeechSupported] = useState(true)
+  const [interimTranscript, setInterimTranscript] = useState("")
+  const [speechStatus, setSpeechStatus] = useState<"idle" | "starting" | "listening" | "processing">("idle")
+  const [speechError, setSpeechError] = useState<string | null>(null)
+  const [autoSendCountdown, setAutoSendCountdown] = useState<number | null>(null)
 
   const agentId = params.id as string
   const agent = agents.find((item) => item.id === agentId)
+
+  const SPEECH_SILENCE_BUFFER_MS = 2000
+  const SPEECH_SILENCE_MS = 5000
+  const AUTO_SEND_DELAY_MS = 5000
+  const NO_INPUT_TIMEOUT_MS = 7000
+
+  const anyAudioPlaying = useMemo(
+    () => Object.values(audioState).some((state) => state.isPlaying),
+    [audioState],
+  )
 
   const systemPrompt = useMemo(
     () =>
@@ -93,34 +128,270 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages])
 
-  const stopListening = () => {
-    shouldAutoResumeListeningRef.current = false
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop()
+  useEffect(() => {
+    runtimeStateRef.current = {
+      isAutoMode,
+      isGenerating,
+      isGeneratingAudio,
+      anyAudioPlaying,
+    }
+  }, [isAutoMode, isGenerating, isGeneratingAudio, anyAudioPlaying])
+
+  useEffect(() => {
+    isVoiceAutoSendRef.current = isVoiceAutoSend
+  }, [isVoiceAutoSend])
+
+  function clearSpeechSilenceTimeout() {
+    if (speechSilenceBufferTimeoutRef.current) {
+      clearTimeout(speechSilenceBufferTimeoutRef.current)
+      speechSilenceBufferTimeoutRef.current = null
+    }
+    if (speechSilenceFinalizeTimeoutRef.current) {
+      clearTimeout(speechSilenceFinalizeTimeoutRef.current)
+      speechSilenceFinalizeTimeoutRef.current = null
     }
   }
 
-  const startListening = () => {
-    if (!recognitionRef.current || isListening || isGenerating || isGeneratingAudio || isPlaying) {
+  function scheduleSpeechSilenceTimeout() {
+    clearSpeechSilenceTimeout()
+    speechSilenceBufferTimeoutRef.current = setTimeout(() => {
+      // Freeze what user already said at pause boundary so resumed speech appends instead of overwriting.
+      const bufferedComposed = speechComposedRef.current.trim()
+      if (bufferedComposed) {
+        speechFinalBufferRef.current = bufferedComposed
+        interimTranscriptRef.current = ""
+        setInterimTranscript("")
+      }
+      speechSilenceFinalizeTimeoutRef.current = setTimeout(() => {
+        finalizeSpeechInput()
+      }, SPEECH_SILENCE_MS)
+    }, SPEECH_SILENCE_BUFFER_MS)
+  }
+
+  function clearNoInputTimeout() {
+    if (noInputTimeoutRef.current) {
+      clearTimeout(noInputTimeoutRef.current)
+      noInputTimeoutRef.current = null
+    }
+  }
+
+  function clearAutoSendTimeout() {
+    if (autoSendTimeoutRef.current) {
+      clearTimeout(autoSendTimeoutRef.current)
+      autoSendTimeoutRef.current = null
+    }
+  }
+
+  function clearAutoSendInterval() {
+    if (autoSendIntervalRef.current) {
+      clearInterval(autoSendIntervalRef.current)
+      autoSendIntervalRef.current = null
+    }
+  }
+
+  function cancelAutoSend() {
+    clearAutoSendTimeout()
+    clearAutoSendInterval()
+    setAutoSendCountdown(null)
+    setSpeechStatus("idle")
+  }
+
+  function scheduleNoInputTimeout() {
+    clearNoInputTimeout()
+    noInputTimeoutRef.current = setTimeout(() => {
+      if (!speechInputDetectedRef.current) {
+        stopListening()
+      }
+    }, NO_INPUT_TIMEOUT_MS)
+  }
+
+  async function ensureMicrophonePermission() {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      return true
+    }
+
+    if (micStreamRef.current) {
+      return true
+    }
+
+    try {
+      micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+      return true
+    } catch {
+      setSpeechError("Microphone permission denied. Please enable microphone access in browser settings.")
+      return false
+    }
+  }
+
+  function finalizeSpeechInput() {
+    clearSpeechSilenceTimeout()
+    clearNoInputTimeout()
+    clearAutoSendTimeout()
+    clearAutoSendInterval()
+    const finalText = `${speechFinalBufferRef.current} ${interimTranscriptRef.current}`.trim() || input.trim()
+    setInterimTranscript("")
+    interimTranscriptRef.current = ""
+    speechFinalBufferRef.current = ""
+    speechComposedRef.current = ""
+
+    if (!finalText) {
+      setSpeechStatus("idle")
+      return
+    }
+
+    setSpeechStatus("processing")
+
+    speechActionRef.current = "stop"
+    try {
+      recognitionRef.current?.stop()
+    } catch {
+      // Ignore invalid stop state.
+    }
+
+    setInput(finalText)
+
+    if (isVoiceAutoSend) {
+      setAutoSendCountdown(5)
+      autoSendIntervalRef.current = setInterval(() => {
+        setAutoSendCountdown((prev) => {
+          if (prev === null) {
+            return null
+          }
+          if (prev <= 1) {
+            clearAutoSendInterval()
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+      autoSendTimeoutRef.current = setTimeout(() => {
+        if (isVoiceAutoSendRef.current) {
+          void sendMessage(finalText)
+        }
+      }, AUTO_SEND_DELAY_MS)
+    } else {
+      setAutoSendCountdown(null)
+      setSpeechStatus("idle")
+    }
+  }
+
+  const stopListening = () => {
+    speechActionRef.current = "stop"
+    setSpeechStatus("idle")
+    setIsListeningPaused(false)
+    clearSpeechSilenceTimeout()
+    clearNoInputTimeout()
+    speechInputDetectedRef.current = false
+    speechFinalBufferRef.current = ""
+    speechComposedRef.current = ""
+    interimTranscriptRef.current = ""
+    setInterimTranscript("")
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch {
+        setIsListening(false)
+      }
+    }
+  }
+
+  const startListening = async () => {
+    if (!recognitionRef.current) {
+      return
+    }
+
+    const state = runtimeStateRef.current
+
+    if (isListening || state.isGenerating || state.isGeneratingAudio || state.anyAudioPlaying) {
+      return
+    }
+
+    const hasPermission = await ensureMicrophonePermission()
+    if (!hasPermission) {
       return
     }
 
     try {
-      shouldAutoResumeListeningRef.current = true
+      cancelAutoSend()
+      speechInputDetectedRef.current = false
+      speechFinalBufferRef.current = ""
+      speechComposedRef.current = ""
+      interimTranscriptRef.current = ""
+      setInterimTranscript("")
+      setSpeechError(null)
+      setSpeechStatus("starting")
+      speechActionRef.current = "none"
       recognitionRef.current.start()
+      scheduleNoInputTimeout()
+    } catch {
+      // InvalidStateError can happen if already started.
+    }
+  }
+
+  const pauseListening = () => {
+    if (!isListening) {
+      return
+    }
+
+    speechActionRef.current = "pause"
+    setIsListeningPaused(true)
+    setSpeechStatus("idle")
+    clearSpeechSilenceTimeout()
+    clearNoInputTimeout()
+    try {
+      recognitionRef.current?.stop()
     } catch {
       setIsListening(false)
     }
   }
 
+  const startOverListening = async () => {
+    cancelAutoSend()
+    speechInputDetectedRef.current = false
+    speechFinalBufferRef.current = ""
+    speechComposedRef.current = ""
+    interimTranscriptRef.current = ""
+    setInterimTranscript("")
+    setInput("")
+    clearSpeechSilenceTimeout()
+    clearNoInputTimeout()
+    clearAutoSendTimeout()
+
+    if (isListening) {
+      speechActionRef.current = "restart"
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        // Ignore stop race.
+      }
+      return
+    }
+
+    setIsListeningPaused(false)
+    await startListening()
+  }
+
+  const resumeListening = async () => {
+    if (!isListeningPaused) {
+      return
+    }
+
+    setIsListeningPaused(false)
+    await startListening()
+  }
+
   async function requestAIResponse(nextHistory: HistoryMessage[]) {
+    const trimmedHistory = nextHistory.slice(-18)
+
     const response = await fetch("/api/generate-response", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: nextHistory[nextHistory.length - 1]?.parts?.[0] || "",
+        message: trimmedHistory[trimmedHistory.length - 1]?.parts?.[0] || "",
         agentPrompt: systemPrompt,
-        history: nextHistory,
+        agentCategory: agent?.category || "",
+        history: trimmedHistory,
       }),
     })
 
@@ -152,13 +423,33 @@ export default function ChatPage() {
 
   async function sendMessage(rawText: string) {
     const text = rawText.trim()
-    if (!text || isGenerating || isGeneratingAudio) {
+    if (!text) {
       return
     }
+
+    // Barge-in: sending a new message must interrupt any currently playing TTS immediately.
+    stopCurrentAudioPlayback()
+
+    if (isGenerating || isGeneratingAudio) {
+      queuedMessageRef.current = text
+      return
+    }
+
+    if (
+      lastSubmitRef.current &&
+      lastSubmitRef.current.text === text &&
+      Date.now() - lastSubmitRef.current.at < 750
+    ) {
+      return
+    }
+
+    lastSubmitRef.current = { text, at: Date.now() }
 
     if (isListening) {
       stopListening()
     }
+
+    cancelAutoSend()
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -191,12 +482,14 @@ export default function ChatPage() {
 
       const audioUrl = await requestSpeech(aiText)
       setMessages((prev) => prev.map((msg) => (msg.id === aiMessage.id ? { ...msg, audioUrl } : msg)))
-      setCurrentAudioUrl(audioUrl)
       setIsGeneratingAudio(false)
+      setSpeechStatus("idle")
 
-      setTimeout(() => {
-        handlePlayAudio(audioUrl)
-      }, 250)
+      if (isAutoMode) {
+        setTimeout(() => {
+          void playMessageAudio(aiMessage.id)
+        }, 250)
+      }
     } catch (error) {
       setIsGenerating(false)
       setIsGeneratingAudio(false)
@@ -206,44 +499,80 @@ export default function ChatPage() {
         description: error instanceof Error ? error.message : "Failed to generate response. Please try again.",
         variant: "destructive",
       })
-
-      if (isAutoMode) {
-        startListening()
-      }
+      setSpeechStatus("idle")
     }
   }
 
-  function handlePlayAudio(audioUrl?: string) {
-    if (!audioRef.current) {
+  async function playMessageAudio(messageId: string) {
+    const audioElement = messageAudioRefs.current[messageId]
+    if (!audioElement) {
       return
     }
 
-    const url = audioUrl || currentAudioUrl
-    if (!url) {
-      return
+    if (currentAudioRef.current && currentAudioRef.current.messageId !== messageId) {
+      stopCurrentAudioPlayback()
+    }
+
+    for (const [otherId, otherAudio] of Object.entries(messageAudioRefs.current)) {
+      if (otherId !== messageId && otherAudio && !otherAudio.paused) {
+        otherAudio.pause()
+      }
     }
 
     if (isListening) {
       stopListening()
     }
 
-    audioRef.current.src = url
-    setCurrentAudioUrl(url)
+    try {
+      await audioElement.play()
+    } catch {
+      setAudioState((prev) => ({
+        ...prev,
+        [messageId]: { isPlaying: false, isPaused: false },
+      }))
+    }
+  }
 
-    const playWhenReady = () => {
-      audioRef.current?.play().catch(() => {
-        setIsPlaying(false)
-        if (isAutoMode) {
-          startListening()
-        }
-      })
+  function pauseMessageAudio(messageId: string) {
+    const audioElement = messageAudioRefs.current[messageId]
+    if (!audioElement) return
+    audioElement.pause()
+    if (currentAudioRef.current?.messageId === messageId) {
+      currentAudioRef.current = null
+    }
+  }
+
+  function stopMessageAudio(messageId: string) {
+    const audioElement = messageAudioRefs.current[messageId]
+    if (!audioElement) return
+
+    audioElement.pause()
+    audioElement.currentTime = 0
+
+    setAudioState((prev) => ({
+      ...prev,
+      [messageId]: { isPlaying: false, isPaused: false },
+    }))
+
+    if (currentAudioRef.current?.messageId === messageId) {
+      currentAudioRef.current = null
     }
 
-    if (audioRef.current.readyState >= 2) {
-      playWhenReady()
-    } else {
-      audioRef.current.addEventListener("canplay", playWhenReady, { once: true })
+  }
+
+  function stopCurrentAudioPlayback() {
+    const currentAudio = currentAudioRef.current
+    if (!currentAudio) {
+      return
     }
+
+    currentAudio.audio.pause()
+    currentAudio.audio.currentTime = 0
+    setAudioState((prev) => ({
+      ...prev,
+      [currentAudio.messageId]: { isPlaying: false, isPaused: false },
+    }))
+    currentAudioRef.current = null
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -262,68 +591,142 @@ export default function ChatPage() {
 
     const recognition = new Recognition()
     recognition.lang = "en-US"
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
 
     recognition.onstart = () => {
       setIsListening(true)
+      speechInputDetectedRef.current = false
+      setSpeechStatus("listening")
     }
 
     recognition.onresult = (event: any) => {
-      let finalTranscript = ""
+      let finalChunk = ""
+      let interimChunk = ""
+
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         if (event.results[index].isFinal) {
-          finalTranscript += event.results[index][0].transcript
+          finalChunk += event.results[index][0].transcript
+        } else {
+          interimChunk += event.results[index][0].transcript
         }
       }
 
-      if (finalTranscript.trim()) {
-        void sendMessage(finalTranscript)
+      if (finalChunk.trim()) {
+        speechFinalBufferRef.current = `${speechFinalBufferRef.current} ${finalChunk}`.trim()
+      }
+
+      const hasNewSpeech = Boolean(finalChunk.trim() || interimChunk.trim())
+
+      if (hasNewSpeech) {
+        speechInputDetectedRef.current = true
+        clearNoInputTimeout()
+      }
+
+      const interimTrimmed = interimChunk.trim()
+      setInterimTranscript(interimTrimmed)
+      interimTranscriptRef.current = interimTrimmed
+      const composed = `${speechFinalBufferRef.current} ${interimChunk}`.trim()
+      if (composed) {
+        speechComposedRef.current = composed
+        setInput(composed)
+      }
+
+      if (hasNewSpeech && composed.trim()) {
+        scheduleSpeechSilenceTimeout()
       }
     }
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
       setIsListening(false)
+      setSpeechStatus("idle")
+      clearSpeechSilenceTimeout()
+      clearNoInputTimeout()
+      speechInputDetectedRef.current = false
+
+      if (event?.error && event.error !== "no-speech" && event.error !== "aborted") {
+        setSpeechError(`Speech recognition error: ${event.error}`)
+      }
+
     }
 
     recognition.onend = () => {
       setIsListening(false)
 
-      if (
-        shouldAutoResumeListeningRef.current &&
-        isAutoMode &&
-        !isPlaying &&
-        !isGenerating &&
-        !isGeneratingAudio
-      ) {
-        setTimeout(() => {
-          startListening()
-        }, 350)
+      if (speechActionRef.current === "pause") {
+        speechActionRef.current = "none"
+        setSpeechStatus("idle")
+        return
       }
+
+      if (speechActionRef.current === "restart") {
+        speechActionRef.current = "none"
+        setIsListeningPaused(false)
+        void startListening()
+        return
+      }
+
+      speechActionRef.current = "none"
+      setIsListeningPaused(false)
+      speechInputDetectedRef.current = false
+      setSpeechStatus("idle")
     }
 
     recognitionRef.current = recognition
 
     return () => {
-      shouldAutoResumeListeningRef.current = false
+      stopCurrentAudioPlayback()
+      speechActionRef.current = "none"
+      clearSpeechSilenceTimeout()
+      clearNoInputTimeout()
+      clearAutoSendTimeout()
+      clearAutoSendInterval()
+      speechFinalBufferRef.current = ""
+      speechComposedRef.current = ""
+      interimTranscriptRef.current = ""
+      speechInputDetectedRef.current = false
+      setInterimTranscript("")
+      setAutoSendCountdown(null)
+      setSpeechStatus("idle")
       recognition.stop()
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((track) => track.stop())
+        micStreamRef.current = null
+      }
       recognitionRef.current = null
     }
-  }, [isAutoMode, isGenerating, isGeneratingAudio, isPlaying])
+  }, [])
 
   useEffect(() => {
-    if (!isSpeechSupported) {
-      return
+    if (!isVoiceAutoSend) {
+      cancelAutoSend()
     }
+  }, [isVoiceAutoSend])
 
-    if (isAutoMode && !isGenerating && !isGeneratingAudio && !isPlaying && !isListening) {
-      startListening()
+  useEffect(() => {
+    const stored = window.localStorage.getItem("voice_auto_send_enabled")
+    if (stored === "0" || stored === "1") {
+      setIsVoiceAutoSend(stored === "1")
     }
+  }, [])
 
-    if (!isAutoMode && isListening) {
+  useEffect(() => {
+    window.localStorage.setItem("voice_auto_send_enabled", isVoiceAutoSend ? "1" : "0")
+  }, [isVoiceAutoSend])
+
+  useEffect(() => {
+    if ((anyAudioPlaying || isGenerating || isGeneratingAudio) && isListening) {
       stopListening()
     }
-  }, [isAutoMode, isGenerating, isGeneratingAudio, isPlaying, isListening, isSpeechSupported])
+  }, [anyAudioPlaying, isGenerating, isGeneratingAudio, isListening])
+
+  useEffect(() => {
+    if (!isGenerating && !isGeneratingAudio && queuedMessageRef.current) {
+      const queued = queuedMessageRef.current
+      queuedMessageRef.current = null
+      void sendMessage(queued)
+    }
+  }, [isGenerating, isGeneratingAudio])
 
   if (!agent) {
     return (
@@ -362,7 +765,7 @@ export default function ChatPage() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -378,7 +781,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="bg-black/40 border border-white/10 backdrop-blur-xl rounded-lg h-[600px] flex flex-col">
+        <div className="bg-black/40 border border-white/10 backdrop-blur-xl rounded-lg h-[calc(100vh-210px)] min-h-[420px] max-h-[760px] md:h-[600px] flex flex-col">
           <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((message) => (
               <div key={message.id} className={`flex gap-3 ${message.isUser ? "justify-end" : "justify-start"}`}>
@@ -388,7 +791,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
+                  className={`max-w-[88%] sm:max-w-[80%] rounded-lg p-3 ${
                     message.isUser
                       ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
                       : "bg-white/10 text-gray-100"
@@ -397,12 +800,68 @@ export default function ChatPage() {
                   <p className="text-sm break-words">{message.text}</p>
                   {message.audioUrl && !message.isUser && (
                     <div className="mt-2">
-                      <button
-                        onClick={() => handlePlayAudio(message.audioUrl)}
-                        className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors"
-                      >
-                        🔊 Play
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            audioState[message.id]?.isPlaying
+                              ? pauseMessageAudio(message.id)
+                              : playMessageAudio(message.id)
+                          }
+                          className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors"
+                        >
+                          {audioState[message.id]?.isPlaying
+                            ? "⏸ Pause"
+                            : audioState[message.id]?.isPaused
+                              ? "▶ Resume"
+                              : "🔊 Play"}
+                        </button>
+                        <button
+                          onClick={() => stopMessageAudio(message.id)}
+                          disabled={!audioState[message.id]?.isPlaying && !audioState[message.id]?.isPaused}
+                          className="text-xs bg-red-500/30 hover:bg-red-500/40 disabled:opacity-50 px-2 py-1 rounded transition-colors"
+                        >
+                          ⏹ Stop
+                        </button>
+                      </div>
+                      <audio
+                        ref={(element) => {
+                          messageAudioRefs.current[message.id] = element
+                        }}
+                        src={message.audioUrl}
+                        onPlay={() => {
+                          currentAudioRef.current = {
+                            messageId: message.id,
+                            audio: messageAudioRefs.current[message.id] as HTMLAudioElement,
+                          }
+                          setAudioState((prev) => ({
+                            ...prev,
+                            [message.id]: { isPlaying: true, isPaused: false },
+                          }))
+                        }}
+                        onPause={(event) => {
+                          const pausedAtMiddle =
+                            event.currentTarget.currentTime > 0 &&
+                            event.currentTarget.currentTime < event.currentTarget.duration
+
+                          setAudioState((prev) => ({
+                            ...prev,
+                            [message.id]: { isPlaying: false, isPaused: pausedAtMiddle },
+                          }))
+                          if (currentAudioRef.current?.messageId === message.id) {
+                            currentAudioRef.current = null
+                          }
+                        }}
+                        onEnded={() => {
+                          setAudioState((prev) => ({
+                            ...prev,
+                            [message.id]: { isPlaying: false, isPaused: false },
+                          }))
+                          if (currentAudioRef.current?.messageId === message.id) {
+                            currentAudioRef.current = null
+                          }
+                        }}
+                        className="hidden"
+                      />
                     </div>
                   )}
                 </div>
@@ -436,16 +895,81 @@ export default function ChatPage() {
                 {isAutoMode ? "Auto Mode: ON" : "Auto Mode: OFF"}
               </button>
               <button
-                onClick={() => (isListening ? stopListening() : startListening())}
-                disabled={!isSpeechSupported || isGenerating || isGeneratingAudio || isPlaying}
+                onClick={() => setIsVoiceAutoSend((prev) => !prev)}
+                className={`px-3 py-1 rounded text-xs transition-colors ${
+                  isVoiceAutoSend ? "bg-blue-500/30 text-blue-100" : "bg-white/10 text-gray-300"
+                }`}
+              >
+                {isVoiceAutoSend ? "Voice Auto Send: ON" : "Voice Auto Send: OFF"}
+              </button>
+              <button
+                onClick={() => {
+                  if (isListening || isListeningPaused) {
+                    finalizeSpeechInput()
+                  } else {
+                    void startListening()
+                  }
+                }}
+                disabled={!isSpeechSupported || isGenerating || isGeneratingAudio || anyAudioPlaying}
                 className="px-3 py-1 rounded text-xs bg-white/10 text-gray-300 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isListening ? "Stop Listening" : "Start Listening"}
+                {isListening || isListeningPaused ? "Stop Listening" : "Voice Input"}
               </button>
+              {(isListening || isListeningPaused) && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (isListening) {
+                        pauseListening()
+                      } else {
+                        void resumeListening()
+                      }
+                    }}
+                    className="px-3 py-1 rounded text-xs bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+                  >
+                    {isListening ? "Pause" : "Resume"}
+                  </button>
+                  <button
+                    onClick={() => void startOverListening()}
+                    className="px-3 py-1 rounded text-xs bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
+                  >
+                    Start Over
+                  </button>
+                </>
+              )}
               <span className="text-xs text-gray-400 self-center">
-                {isListening ? "Listening..." : isPlaying ? "Speaking..." : "Idle"}
+                {speechStatus === "starting"
+                  ? "Starting mic..."
+                  : isListeningPaused
+                    ? "Paused"
+                  : isListening
+                    ? "Listening..."
+                    : speechStatus === "processing"
+                      ? "Processing speech..."
+                      : anyAudioPlaying
+                        ? "Speaking..."
+                        : "Idle"}
               </span>
             </div>
+
+            {(interimTranscript || speechError) && (
+              <div className="mb-2 rounded border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-200">
+                {interimTranscript && <div>Heard: {interimTranscript}</div>}
+                {speechError && <div className="text-red-300">{speechError}</div>}
+              </div>
+            )}
+
+            {autoSendCountdown !== null && (
+              <div className="mb-2 flex items-center justify-between rounded border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+                <span>Sending in {autoSendCountdown}...</span>
+                <button
+                  onClick={cancelAutoSend}
+                  className="rounded bg-white/10 px-2 py-1 text-blue-100 hover:bg-white/20 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
 
             <div className="flex gap-2">
               <textarea
@@ -468,17 +992,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <audio
-        ref={audioRef}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onEnded={() => {
-          setIsPlaying(false)
-          if (isAutoMode) {
-            startListening()
-          }
-        }}
-      />
     </div>
   )
 }
