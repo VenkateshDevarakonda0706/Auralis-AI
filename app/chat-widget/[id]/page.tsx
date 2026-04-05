@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { useApp } from "@/lib/context"
 import { useToast } from "@/hooks/use-toast"
+import { readJsonResponse } from "@/lib/http"
 
 interface ChatMessage {
   id: string
@@ -251,29 +252,15 @@ export default function ChatWidgetPage() {
 
     setInput(finalText)
 
-    if (isVoiceAutoSend) {
-      setAutoSendCountdown(5)
-      autoSendIntervalRef.current = setInterval(() => {
-        setAutoSendCountdown((prev) => {
-          if (prev === null) {
-            return null
-          }
-          if (prev <= 1) {
-            clearAutoSendInterval()
-            return null
-          }
-          return prev - 1
-        })
-      }, 1000)
-      autoSendTimeoutRef.current = setTimeout(() => {
-        if (isVoiceAutoSendRef.current) {
-          void sendMessage(finalText)
-        }
-      }, AUTO_SEND_DELAY_MS)
-    } else {
+    // Strict rule: after the silence cycle completes, do not start any additional timers.
+    if (isVoiceAutoSendRef.current) {
       setAutoSendCountdown(null)
-      setSpeechStatus("idle")
+      void sendMessage(finalText)
+      return
     }
+
+    setAutoSendCountdown(null)
+    setSpeechStatus("idle")
   }
 
   const startListening = async (isResumingAfterPause: boolean = false) => {
@@ -528,7 +515,7 @@ export default function ChatWidgetPage() {
 
   async function requestAIResponse(nextHistory: HistoryMessage[]) {
     const trimmedHistory = nextHistory.slice(-18)
-    const response = await fetch("/api/generate-response", {
+    const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -539,7 +526,7 @@ export default function ChatWidgetPage() {
       }),
     })
 
-    const payload = await response.json()
+    const payload = await readJsonResponse<{ text?: string; error?: string }>(response, "/api/chat")
     if (!response.ok) {
       throw new Error(payload.error || "Failed to generate response")
     }
@@ -565,7 +552,7 @@ export default function ChatWidgetPage() {
         throw new Error("Failed to convert text to speech")
       }
 
-      const data = await response.json()
+      const data = await readJsonResponse<{ audioUrl?: string; error?: string }>(response, "/api/text-to-speech")
       return data.audioUrl
     } catch (error) {
       console.error("Error converting to speech:", error)

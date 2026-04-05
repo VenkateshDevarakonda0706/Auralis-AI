@@ -1,4 +1,5 @@
 import { ApiResponse, Agent, ChatMessage } from './types'
+import { readJsonResponse } from './http'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -17,18 +18,21 @@ class ApiClient {
         ...options,
       })
 
-      const data = await response.json()
+      const data = await readJsonResponse<unknown>(response, `API request to ${endpoint}`)
 
       if (!response.ok) {
+        const errorPayload = data && typeof data === 'object' ? (data as { error?: unknown }) : null
         return {
           success: false,
-          error: data.error || `HTTP ${response.status}: ${response.statusText}`,
+          error:
+            (typeof errorPayload?.error === 'string' && errorPayload.error) ||
+            `HTTP ${response.status}: ${response.statusText}`,
         }
       }
 
       return {
         success: true,
-        data,
+        data: data as T,
       }
     } catch (error) {
       console.error(`API request failed (${endpoint}):`, error)
@@ -41,7 +45,7 @@ class ApiClient {
 
   // AI Response Generation
   async generateResponse(message: string, agentPrompt?: string, agentCategory?: string): Promise<ApiResponse<{ text: string }>> {
-    return this.request<{ text: string }>('/generate-response', {
+    return this.request<{ text: string }>('/chat', {
       method: 'POST',
       body: JSON.stringify({ message, agentPrompt, agentCategory }),
     })
