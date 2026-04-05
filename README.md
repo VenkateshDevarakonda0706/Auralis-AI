@@ -150,7 +150,7 @@ The project uses a custom component library built with:
 - **Cards**: Information containers
 - **Buttons**: Interactive elements
 - **Forms**: Input and validation
-- **Charts**: Data visualization
+- **Charts**: Data visualizationf
 - **Modals**: Overlay dialogs
 
 ## 🔒 Security

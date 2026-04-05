@@ -57,6 +57,7 @@ export default function ChatWidgetPage() {
   const [speechStatus, setSpeechStatus] = useState<"idle" | "starting" | "listening" | "processing">("idle")
   const [speechError, setSpeechError] = useState<string | null>(null)
   const [isSpeechSupported, setIsSpeechSupported] = useState(true)
+  const [silenceFinalizeCountdown, setSilenceFinalizeCountdown] = useState<number | null>(null)
   const [autoSendCountdown, setAutoSendCountdown] = useState<number | null>(null)
 
   // Refs
@@ -137,6 +138,7 @@ export default function ChatWidgetPage() {
       clearTimeout(silenceFinalizeTimeoutRef.current)
       silenceFinalizeTimeoutRef.current = null
     }
+    setSilenceFinalizeCountdown(null)
   }
 
   function scheduleSpeechTimeout() {
@@ -149,7 +151,20 @@ export default function ChatWidgetPage() {
         interimTranscriptRef.current = ""
         setInterimTranscript("")
       }
+      // Show visible countdown for finalization window (5 seconds).
+      setSilenceFinalizeCountdown(5)
+      const countdownInterval = setInterval(() => {
+        setSilenceFinalizeCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(countdownInterval)
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
       silenceFinalizeTimeoutRef.current = setTimeout(() => {
+        clearInterval(countdownInterval)
+        setSilenceFinalizeCountdown(null)
         finalizeSpeechInput()
       }, SPEECH_SILENCE_MS)
     }, SPEECH_SILENCE_BUFFER_MS)
@@ -261,7 +276,7 @@ export default function ChatWidgetPage() {
     }
   }
 
-  const startListening = async () => {
+  const startListening = async (isResumingAfterPause: boolean = false) => {
     if (!recognitionRef.current) {
       return
     }
@@ -278,10 +293,12 @@ export default function ChatWidgetPage() {
     setSpeechError(null)
     cancelAutoSend()
     speechInputDetectedRef.current = false
-    speechFinalBufferRef.current = ""
-    speechComposedRef.current = ""
-    interimTranscriptRef.current = ""
-    setInterimTranscript("")
+    if (!isResumingAfterPause) {
+      speechFinalBufferRef.current = ""
+      speechComposedRef.current = ""
+      interimTranscriptRef.current = ""
+      setInterimTranscript("")
+    }
     setSpeechStatus("starting")
     speechActionRef.current = "none"
     try {
@@ -333,7 +350,7 @@ export default function ChatWidgetPage() {
     }
 
     setIsListeningPaused(false)
-    await startListening()
+    await startListening(true)
   }
 
   const startOverListening = async () => {
@@ -359,7 +376,7 @@ export default function ChatWidgetPage() {
     }
 
     setIsListeningPaused(false)
-    await startListening()
+    await startListening(false)
   }
 
   const toggleListening = () => {
@@ -942,6 +959,13 @@ export default function ChatWidgetPage() {
             {speechError}
           </div>
         )}
+        {silenceFinalizeCountdown !== null && (
+          <div className="mb-3 p-3 bg-amber-500/20 border border-amber-500/30 rounded-lg flex items-center justify-between">
+            <span className="text-amber-300 text-sm font-medium">Finalizing in {silenceFinalizeCountdown}s...</span>
+            <span className="text-amber-200 text-lg font-bold">{silenceFinalizeCountdown}</span>
+          </div>
+        )}
+
         {autoSendCountdown !== null && (
           <div className="mb-3 flex items-center justify-between rounded border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
             <span>Sending in {autoSendCountdown}...</span>

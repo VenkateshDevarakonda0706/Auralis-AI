@@ -72,6 +72,7 @@ export default function ChatPage() {
   const [interimTranscript, setInterimTranscript] = useState("")
   const [speechStatus, setSpeechStatus] = useState<"idle" | "starting" | "listening" | "processing">("idle")
   const [speechError, setSpeechError] = useState<string | null>(null)
+  const [silenceFinalizeCountdown, setSilenceFinalizeCountdown] = useState<number | null>(null)
   const [autoSendCountdown, setAutoSendCountdown] = useState<number | null>(null)
 
   const agentId = params.id as string
@@ -150,6 +151,7 @@ export default function ChatPage() {
       clearTimeout(speechSilenceFinalizeTimeoutRef.current)
       speechSilenceFinalizeTimeoutRef.current = null
     }
+    setSilenceFinalizeCountdown(null)
   }
 
   function scheduleSpeechSilenceTimeout() {
@@ -162,7 +164,20 @@ export default function ChatPage() {
         interimTranscriptRef.current = ""
         setInterimTranscript("")
       }
+      // Show visible countdown for finalization window (5 seconds).
+      setSilenceFinalizeCountdown(5)
+      const countdownInterval = setInterval(() => {
+        setSilenceFinalizeCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(countdownInterval)
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
       speechSilenceFinalizeTimeoutRef.current = setTimeout(() => {
+        clearInterval(countdownInterval)
+        setSilenceFinalizeCountdown(null)
         finalizeSpeechInput()
       }, SPEECH_SILENCE_MS)
     }, SPEECH_SILENCE_BUFFER_MS)
@@ -296,7 +311,7 @@ export default function ChatPage() {
     }
   }
 
-  const startListening = async () => {
+  const startListening = async (isResumingAfterPause: boolean = false) => {
     if (!recognitionRef.current) {
       return
     }
@@ -315,10 +330,14 @@ export default function ChatPage() {
     try {
       cancelAutoSend()
       speechInputDetectedRef.current = false
+      // Only clear buffers if this is a fresh start, not a resume after pause
+      // Resume should preserve frozen buffers for append behavior
+      if (!isResumingAfterPause) {
       speechFinalBufferRef.current = ""
       speechComposedRef.current = ""
       interimTranscriptRef.current = ""
       setInterimTranscript("")
+      }
       setSpeechError(null)
       setSpeechStatus("starting")
       speechActionRef.current = "none"
@@ -369,7 +388,7 @@ export default function ChatPage() {
     }
 
     setIsListeningPaused(false)
-    await startListening()
+    await startListening(false)
   }
 
   const resumeListening = async () => {
@@ -378,7 +397,7 @@ export default function ChatPage() {
     }
 
     setIsListeningPaused(false)
-    await startListening()
+    await startListening(true)
   }
 
   async function requestAIResponse(nextHistory: HistoryMessage[]) {
@@ -687,6 +706,7 @@ export default function ChatPage() {
       speechInputDetectedRef.current = false
       setInterimTranscript("")
       setAutoSendCountdown(null)
+      setSilenceFinalizeCountdown(null)
       setSpeechStatus("idle")
       recognition.stop()
       if (micStreamRef.current) {
@@ -956,6 +976,13 @@ export default function ChatPage() {
               <div className="mb-2 rounded border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-200">
                 {interimTranscript && <div>Heard: {interimTranscript}</div>}
                 {speechError && <div className="text-red-300">{speechError}</div>}
+              </div>
+            )}
+
+            {silenceFinalizeCountdown !== null && (
+              <div className="mb-2 flex items-center justify-between rounded border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                <span>Finalizing in {silenceFinalizeCountdown}s...</span>
+                <span className="text-amber-200 font-semibold">{silenceFinalizeCountdown}</span>
               </div>
             )}
 
