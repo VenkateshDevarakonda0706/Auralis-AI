@@ -2,6 +2,7 @@ export async function readJsonResponse<T>(response: Response, requestName: strin
   const contentType = response.headers.get("content-type") || ""
   const responseText = await response.text()
   const trimmed = responseText.trim()
+  const includePreview = process.env.NODE_ENV !== "production"
 
   if (!trimmed) {
     throw new Error(`${requestName} returned an empty response`)
@@ -11,17 +12,15 @@ export async function readJsonResponse<T>(response: Response, requestName: strin
 
   if (!looksJson) {
     const preview = trimmed.slice(0, 180).replace(/\s+/g, " ")
-    throw new Error(
-      `${requestName} returned non-JSON (${contentType || "missing content-type"}). Preview: ${preview}`,
-    )
+    const base = `${requestName} returned non-JSON (${contentType || "missing content-type"})`
+    throw new Error(includePreview ? `${base}. Preview: ${preview}` : `${base}. Please retry in a moment.`)
   }
 
   try {
     return JSON.parse(responseText) as T
-  } catch (error) {
+  } catch {
     const preview = trimmed.slice(0, 180).replace(/\s+/g, " ")
-    throw new Error(
-      `${requestName} returned invalid JSON. Preview: ${preview}`,
-    )
+    const base = `${requestName} returned invalid JSON`
+    throw new Error(includePreview ? `${base}. Preview: ${preview}` : `${base}. Please retry in a moment.`)
   }
 }

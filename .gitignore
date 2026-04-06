@@ -82,3 +82,5 @@ private/
 # =========================
 .vercel/
 .turbo/
+.vercel
+.env*.local
