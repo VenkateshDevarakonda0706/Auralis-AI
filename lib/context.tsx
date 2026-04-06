@@ -4,6 +4,7 @@ import React, { createContext, useContext, useReducer, useEffect, ReactNode, use
 import { Agent, User, Conversation, Analytics, AppSettings } from './types'
 import { storage } from './storage'
 import { api } from './api'
+import { normalizeAgent } from './agent-domain'
 
 // State interface
 interface AppState {
@@ -46,6 +47,9 @@ const initialState: AppState = {
       name: "Stress-Buster Buddy",
       description: "Your empathetic companion for stress relief and mental wellness support",
       category: "Wellness",
+      domain: "stress management and emotional wellness",
+      allowedTopics: ["stress", "anxiety", "calm", "breathing", "mindfulness", "burnout", "sleep"],
+      restrictedTopics: ["self-harm instructions", "violence instructions", "illegal acts"],
       voiceId: "en-US-terrell",
       isActive: true,
       conversations: 127,
@@ -60,6 +64,9 @@ const initialState: AppState = {
       name: "Creative Artist",
       description: "Your inspiring guide for artistic projects and creative inspiration",
       category: "Creative",
+      domain: "creative art and design",
+      allowedTopics: ["art", "design", "drawing", "painting", "illustration", "color theory", "portfolio"],
+      restrictedTopics: ["harmful content", "illegal acts"],
       voiceId: "en-US-natalie",
       isActive: true,
       conversations: 89,
@@ -74,6 +81,9 @@ const initialState: AppState = {
       name: "Fitness Coach",
       description: "Your motivational trainer for achieving health and fitness goals",
       category: "Health",
+      domain: "fitness, exercise, and healthy habits",
+      allowedTopics: ["fitness", "workout", "exercise", "nutrition", "hydration", "sleep recovery"],
+      restrictedTopics: ["unsafe drug use", "extreme harm", "illegal acts"],
       voiceId: "en-US-ken",
       isActive: false,
       conversations: 45,
@@ -88,6 +98,9 @@ const initialState: AppState = {
       name: "Study Buddy",
       description: "Your patient learning companion for academic success",
       category: "Education",
+      domain: "studying and education",
+      allowedTopics: ["study", "homework", "exam prep", "math", "science", "history", "revision"],
+      restrictedTopics: ["cheating", "exam fraud", "harmful content"],
       voiceId: "en-US-julia",
       isActive: true,
       conversations: 203,
@@ -233,7 +246,7 @@ export function AppProvider({ children }: AppProviderProps) {
         // Load agents
         const agents = storage.getAgents()
         if (agents.length > 0) {
-          dispatch({ type: 'SET_AGENTS', payload: agents })
+          dispatch({ type: 'SET_AGENTS', payload: agents.map(normalizeAgent) })
         }
 
         // Load conversations
@@ -335,6 +348,9 @@ export function AppProvider({ children }: AppProviderProps) {
             name: "Stress-Buster Buddy",
             description: "Your empathetic companion for stress relief and mental wellness support",
             category: "Wellness",
+            domain: "stress management and emotional wellness",
+            allowedTopics: ["stress", "anxiety", "calm", "breathing", "mindfulness", "burnout", "sleep"],
+            restrictedTopics: ["self-harm instructions", "violence instructions", "illegal acts"],
             voiceId: "en-US-terrell",
             isActive: true,
             conversations: 127,
@@ -349,6 +365,9 @@ export function AppProvider({ children }: AppProviderProps) {
             name: "Creative Artist",
             description: "Your inspiring guide for artistic projects and creative inspiration",
             category: "Creative",
+            domain: "creative art and design",
+            allowedTopics: ["art", "design", "drawing", "painting", "illustration", "color theory", "portfolio"],
+            restrictedTopics: ["harmful content", "illegal acts"],
             voiceId: "en-US-natalie",
             isActive: true,
             conversations: 89,
@@ -363,6 +382,9 @@ export function AppProvider({ children }: AppProviderProps) {
             name: "Fitness Coach",
             description: "Your motivational trainer for achieving health and fitness goals",
             category: "Health",
+            domain: "fitness, exercise, and healthy habits",
+            allowedTopics: ["fitness", "workout", "exercise", "nutrition", "hydration", "sleep recovery"],
+            restrictedTopics: ["unsafe drug use", "extreme harm", "illegal acts"],
             voiceId: "en-US-ken",
             isActive: false,
             conversations: 45,
@@ -377,6 +399,9 @@ export function AppProvider({ children }: AppProviderProps) {
             name: "Study Buddy",
             description: "Your patient learning companion for academic success",
             category: "Education",
+            domain: "studying and education",
+            allowedTopics: ["study", "homework", "exam prep", "math", "science", "history", "revision"],
+            restrictedTopics: ["cheating", "exam fraud", "harmful content"],
             voiceId: "en-US-julia",
             isActive: true,
             conversations: 203,
@@ -389,10 +414,11 @@ export function AppProvider({ children }: AppProviderProps) {
         ]
         
         // Save default agents to storage
-        storage.saveAgents(defaultAgents)
-        dispatch({ type: 'SET_AGENTS', payload: defaultAgents })
+        const normalizedDefaults = defaultAgents.map(normalizeAgent)
+        storage.saveAgents(normalizedDefaults)
+        dispatch({ type: 'SET_AGENTS', payload: normalizedDefaults })
       } else {
-        dispatch({ type: 'SET_AGENTS', payload: agents })
+        dispatch({ type: 'SET_AGENTS', payload: agents.map(normalizeAgent) })
       }
     } catch (error) {
       console.error('Error loading agents:', error)
@@ -404,12 +430,12 @@ export function AppProvider({ children }: AppProviderProps) {
 
   const createAgent = useCallback(async (agentData: Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>): Promise<boolean> => {
     try {
-      const newAgent: Agent = {
+      const newAgent: Agent = normalizeAgent({
         ...agentData,
         id: Date.now().toString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      }
+      })
       
       // Add to state
       dispatch({ type: 'ADD_AGENT', payload: newAgent })

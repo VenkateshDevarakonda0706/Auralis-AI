@@ -1,6 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { validateAgentDomain } from "@/lib/server/domain-guard"
+
+const agentConfigSchema = z.object({
+  name: z.string().min(1).max(120),
+  domain: z.string().min(1).max(200),
+  allowedTopics: z.array(z.string().min(1).max(120)).min(1),
+  restrictedTopics: z.array(z.string().min(1).max(120)).optional(),
+})
 
 const chatMessageSchema = z.object({
   role: z.enum(["user", "model"]),
@@ -11,6 +19,7 @@ const chatRequestSchema = z.object({
   message: z.string().min(1, "Message is required").max(5000, "Message too long"),
   agentPrompt: z.string().optional(),
   agentCategory: z.string().optional(),
+  agentConfig: agentConfigSchema,
   history: z.array(chatMessageSchema).optional(),
 })
 
@@ -41,11 +50,6 @@ function buildPrompt(message: string, agentPrompt?: string, agentCategory?: stri
 
 export async function handleChatRequest(request: Request) {
   try {
-    const apiKey = process.env.GOOGLE_AI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: "Server is missing GOOGLE_AI_API_KEY" }, { status: 500 })
-    }
-
     const payload = chatRequestSchema.safeParse(await request.json())
     if (!payload.success) {
       return NextResponse.json(
@@ -54,7 +58,18 @@ export async function handleChatRequest(request: Request) {
       )
     }
 
-    const { message, agentPrompt, agentCategory, history } = payload.data
+    const { message, agentPrompt, agentCategory, agentConfig, history } = payload.data
+    const domainValidation = validateAgentDomain(message, agentCategory, agentPrompt, agentConfig)
+
+    if (domainValidation.enforced && !domainValidation.allowed) {
+      return NextResponse.json({ text: domainValidation.rejectionText, model: "domain-guard" })
+    }
+
+    const apiKey = process.env.GOOGLE_AI_API_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "Server is missing GOOGLE_AI_API_KEY" }, { status: 500 })
+    }
+
     const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash"
     const ai = new GoogleGenerativeAI(apiKey)
     const model = ai.getGenerativeModel({ model: modelName })

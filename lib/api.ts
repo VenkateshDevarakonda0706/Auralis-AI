@@ -1,5 +1,6 @@
 import { ApiResponse, Agent, ChatMessage } from './types'
 import { readJsonResponse } from './http'
+import type { AgentConfigPayload } from './agent-domain'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -44,10 +45,15 @@ class ApiClient {
   }
 
   // AI Response Generation
-  async generateResponse(message: string, agentPrompt?: string, agentCategory?: string): Promise<ApiResponse<{ text: string }>> {
+  async generateResponse(
+    message: string,
+    agentPrompt?: string,
+    agentCategory?: string,
+    agentConfig?: AgentConfigPayload,
+  ): Promise<ApiResponse<{ text: string }>> {
     return this.request<{ text: string }>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ message, agentPrompt, agentCategory }),
+      body: JSON.stringify({ message, agentPrompt, agentCategory, agentConfig }),
     })
   }
 

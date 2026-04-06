@@ -93,7 +93,7 @@ function installBrowserMocks() {
 }
 
 async function installApiMocks(page: import("@playwright/test").Page) {
-  await page.route("**/api/generate-response", async (route) => {
+  await page.route("**/api/chat", async (route) => {
     const req = route.request()
     const body = req.postDataJSON() as { message?: string }
     const message = (body?.message || "").toLowerCase()
@@ -205,7 +205,7 @@ test.describe("Main chat reliability and voice controls", () => {
 
     let generateCalls = 0
     page.on("request", (request) => {
-      if (request.url().includes("/api/generate-response")) {
+      if (request.url().includes("/api/chat")) {
         generateCalls += 1
       }
     })
@@ -234,7 +234,7 @@ test.describe("Main chat reliability and voice controls", () => {
 
     let generateCalls = 0
     page.on("request", (request) => {
-      if (request.url().includes("/api/generate-response")) {
+      if (request.url().includes("/api/chat")) {
         generateCalls += 1
       }
     })
@@ -343,7 +343,7 @@ test.describe("Main chat reliability and voice controls", () => {
 
     let generateCalls = 0
     page.on("request", (request) => {
-      if (request.url().includes("/api/generate-response")) {
+      if (request.url().includes("/api/chat")) {
         generateCalls += 1
       }
     })
@@ -367,7 +367,7 @@ test.describe("Main chat reliability and voice controls", () => {
       ;(window as any).__emitMockSpeechFinal("Manual click required")
     })
 
-    await expect(page.getByText(/Sending in [1-5]/i)).toBeVisible()
+    await expect(page.getByText(/Sending in [1-5]/i)).toHaveCount(0)
 
     await expect.poll(() => generateCalls, { timeout: 15000 }).toBe(2)
   })
@@ -400,7 +400,7 @@ test.describe("Main chat reliability and voice controls", () => {
 
     let generateCalls = 0
     page.on("request", (request) => {
-      if (request.url().includes("/api/generate-response")) {
+      if (request.url().includes("/api/chat")) {
         generateCalls += 1
       }
     })
@@ -441,7 +441,7 @@ test.describe("Main and widget parity", () => {
 
     let generateCalls = 0
     page.on("request", (request) => {
-      if (request.url().includes("/api/generate-response")) {
+      if (request.url().includes("/api/chat")) {
         generateCalls += 1
       }
     })

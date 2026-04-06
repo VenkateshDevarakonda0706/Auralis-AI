@@ -15,6 +15,9 @@ export interface Agent {
   name: string
   description: string
   category: string
+  domain: string
+  allowedTopics: string[]
+  restrictedTopics?: string[]
   voiceId: string
   isActive: boolean
   conversations: number

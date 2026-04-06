@@ -29,12 +29,16 @@ const voiceOptions = [
 const promptTemplates = [
   {
     name: "Stress Relief Assistant",
+    domain: "stress management and emotional wellness",
+    allowedTopics: "stress, anxiety, calm, breathing, mindfulness, sleep",
     prompt:
       "You are a talkative, empathetic assistant bot. Your main job is to help people reduce stress by chatting with them, giving them calming advice, jokes, or friendly motivation. You talk in a relaxed, human tone, like a good friend who really listens.",
     firstMessage: "Hey there 😊 I'm your little stress-buster buddy! What's on your mind today?",
   },
   {
     name: "Creative Artist",
+    domain: "creative art and design",
+    allowedTopics: "art, design, drawing, painting, illustration, color theory",
     prompt:
       "You are an inspiring and knowledgeable artist assistant. You help people with creative projects, art techniques, and provide artistic inspiration. You're passionate about all forms of art and love to encourage creativity.",
     firstMessage:
@@ -42,18 +46,24 @@ const promptTemplates = [
   },
   {
     name: "Fitness Coach",
+    domain: "fitness, exercise, and healthy habits",
+    allowedTopics: "fitness, workout, exercise, nutrition, hydration, sleep recovery",
     prompt:
       "You are an energetic and motivational fitness coach. You provide workout advice, nutrition tips, and keep people motivated on their fitness journey. You're encouraging but also realistic about goals.",
     firstMessage: "Hey champion! 💪 Ready to crush your fitness goals today? Let's get moving!",
   },
   {
     name: "Study Buddy",
+    domain: "studying and education",
+    allowedTopics: "study, homework, exam prep, math, science, revision",
     prompt:
       "You are a helpful and patient study companion. You help students with learning, provide study tips, explain concepts clearly, and keep them motivated. You make learning fun and engaging.",
     firstMessage: "Hi there, scholar! 📚 Ready to dive into some learning? What subject are we tackling today?",
   },
   {
     name: "Business Mentor",
+    domain: "business strategy and entrepreneurship",
+    allowedTopics: "business strategy, startup planning, pricing, sales, leadership, operations",
     prompt:
       "You are a wise and experienced business mentor. You provide strategic advice, help with decision-making, and guide entrepreneurs through challenges. You're professional yet approachable.",
     firstMessage:
@@ -70,6 +80,9 @@ export default function CreateAgent() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
+    domain: "",
+    allowedTopics: "",
+    restrictedTopics: "",
     prompt: "",
     firstMessage: "",
     voiceId: "",
@@ -91,8 +104,17 @@ export default function CreateAgent() {
       firstMessage: template.firstMessage,
       name: template.name,
       description: `AI assistant specialized in ${template.name.toLowerCase()}`,
+      domain: template.domain,
+      allowedTopics: template.allowedTopics,
+      restrictedTopics: "harmful content, illegal acts",
     }))
   }
+
+  const parseTopics = (input: string) =>
+    input
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
 
   const handleVoicePreview = async () => {
     if (!formData.voiceId || !formData.firstMessage) {
@@ -145,10 +167,10 @@ export default function CreateAgent() {
   }
 
   const handleSave = async () => {
-    if (!formData.name || !formData.description || !formData.prompt || !formData.firstMessage || !formData.voiceId) {
+    if (!formData.name || !formData.description || !formData.domain || !formData.allowedTopics || !formData.prompt || !formData.firstMessage || !formData.voiceId) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all required fields.",
+        description: "Please fill in all required fields, including domain and allowed topics.",
         variant: "destructive",
       })
       return
@@ -160,6 +182,9 @@ export default function CreateAgent() {
         name: formData.name,
         description: formData.description,
         category: "Custom",
+        domain: formData.domain,
+        allowedTopics: parseTopics(formData.allowedTopics),
+        restrictedTopics: parseTopics(formData.restrictedTopics),
         voiceId: formData.voiceId,
         isActive: true,
         conversations: 0,
@@ -292,6 +317,42 @@ export default function CreateAgent() {
                     onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                     placeholder="Brief description of what your agent does..."
                     className="bg-black/20 border-white/20 text-white placeholder:text-gray-500 min-h-[80px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="domain" className="text-gray-300">
+                    Domain (Required)
+                  </Label>
+                  <Input
+                    id="domain"
+                    value={formData.domain}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, domain: e.target.value }))}
+                    placeholder="e.g., career guidance for software engineers"
+                    className="bg-black/20 border-white/20 text-white placeholder:text-gray-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="allowed-topics" className="text-gray-300">
+                    Allowed Topics (comma separated)
+                  </Label>
+                  <Textarea
+                    id="allowed-topics"
+                    value={formData.allowedTopics}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, allowedTopics: e.target.value }))}
+                    placeholder="career planning, interview prep, resume review"
+                    className="bg-black/20 border-white/20 text-white placeholder:text-gray-500 min-h-[72px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="restricted-topics" className="text-gray-300">
+                    Restricted Topics (optional, comma separated)
+                  </Label>
+                  <Textarea
+                    id="restricted-topics"
+                    value={formData.restrictedTopics}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, restrictedTopics: e.target.value }))}
+                    placeholder="illegal acts, harmful content"
+                    className="bg-black/20 border-white/20 text-white placeholder:text-gray-500 min-h-[72px]"
                   />
                 </div>
               </CardContent>

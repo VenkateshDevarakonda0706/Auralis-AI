@@ -19,6 +19,7 @@ import {
 import { useApp } from "@/lib/context"
 import { useToast } from "@/hooks/use-toast"
 import { readJsonResponse } from "@/lib/http"
+import { ensureAgentConfig } from "@/lib/agent-domain"
 
 interface ChatMessage {
   id: string
@@ -69,6 +70,8 @@ export default function ChatWidgetPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const silenceBufferTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const silenceFinalizeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const silenceCountdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const silenceCycleIdRef = useRef(0)
   const noInputTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const autoSendTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const autoSendIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -131,6 +134,7 @@ export default function ChatWidgetPage() {
   }, [messages])
 
   function clearSpeechTimeout() {
+    silenceCycleIdRef.current += 1
     if (silenceBufferTimeoutRef.current) {
       clearTimeout(silenceBufferTimeoutRef.current)
       silenceBufferTimeoutRef.current = null
@@ -139,12 +143,20 @@ export default function ChatWidgetPage() {
       clearTimeout(silenceFinalizeTimeoutRef.current)
       silenceFinalizeTimeoutRef.current = null
     }
+    if (silenceCountdownIntervalRef.current) {
+      clearInterval(silenceCountdownIntervalRef.current)
+      silenceCountdownIntervalRef.current = null
+    }
     setSilenceFinalizeCountdown(null)
   }
 
   function scheduleSpeechTimeout() {
     clearSpeechTimeout()
+    const cycleId = silenceCycleIdRef.current
     silenceBufferTimeoutRef.current = setTimeout(() => {
+      if (cycleId !== silenceCycleIdRef.current) {
+        return
+      }
       // Preserve current composed text across pauses so resumed speech appends naturally.
       const bufferedComposed = speechComposedRef.current.trim()
       if (bufferedComposed) {
@@ -154,17 +166,26 @@ export default function ChatWidgetPage() {
       }
       // Show visible countdown for finalization window (5 seconds).
       setSilenceFinalizeCountdown(5)
-      const countdownInterval = setInterval(() => {
+      silenceCountdownIntervalRef.current = setInterval(() => {
         setSilenceFinalizeCountdown((prev) => {
           if (prev === null || prev <= 1) {
-            clearInterval(countdownInterval)
+            if (silenceCountdownIntervalRef.current) {
+              clearInterval(silenceCountdownIntervalRef.current)
+              silenceCountdownIntervalRef.current = null
+            }
             return null
           }
           return prev - 1
         })
       }, 1000)
       silenceFinalizeTimeoutRef.current = setTimeout(() => {
-        clearInterval(countdownInterval)
+        if (cycleId !== silenceCycleIdRef.current) {
+          return
+        }
+        if (silenceCountdownIntervalRef.current) {
+          clearInterval(silenceCountdownIntervalRef.current)
+          silenceCountdownIntervalRef.current = null
+        }
         setSilenceFinalizeCountdown(null)
         finalizeSpeechInput()
       }, SPEECH_SILENCE_MS)
@@ -522,6 +543,7 @@ export default function ChatWidgetPage() {
         message: trimmedHistory[trimmedHistory.length - 1]?.parts?.[0] || "",
         agentPrompt: agent?.prompt || "You are a helpful AI assistant.",
         agentCategory: agent?.category || "",
+        agentConfig: agent ? ensureAgentConfig(agent) : undefined,
         history: trimmedHistory,
       }),
     })

@@ -8,6 +8,7 @@ import { useParams } from "next/navigation"
 import Image from "next/image"
 import { useApp } from "@/lib/context"
 import { readJsonResponse } from "@/lib/http"
+import { ensureAgentConfig } from "@/lib/agent-domain"
 
 interface ChatMessage {
   id: string
@@ -42,6 +43,8 @@ export default function ChatPage() {
   const speechActionRef = useRef<"none" | "pause" | "stop" | "restart">("none")
   const speechSilenceBufferTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const speechSilenceFinalizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const speechSilenceCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const speechSilenceCycleIdRef = useRef(0)
   const noInputTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoSendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoSendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -144,6 +147,7 @@ export default function ChatPage() {
   }, [isVoiceAutoSend])
 
   function clearSpeechSilenceTimeout() {
+    speechSilenceCycleIdRef.current += 1
     if (speechSilenceBufferTimeoutRef.current) {
       clearTimeout(speechSilenceBufferTimeoutRef.current)
       speechSilenceBufferTimeoutRef.current = null
@@ -152,12 +156,20 @@ export default function ChatPage() {
       clearTimeout(speechSilenceFinalizeTimeoutRef.current)
       speechSilenceFinalizeTimeoutRef.current = null
     }
+    if (speechSilenceCountdownIntervalRef.current) {
+      clearInterval(speechSilenceCountdownIntervalRef.current)
+      speechSilenceCountdownIntervalRef.current = null
+    }
     setSilenceFinalizeCountdown(null)
   }
 
   function scheduleSpeechSilenceTimeout() {
     clearSpeechSilenceTimeout()
+    const cycleId = speechSilenceCycleIdRef.current
     speechSilenceBufferTimeoutRef.current = setTimeout(() => {
+      if (cycleId !== speechSilenceCycleIdRef.current) {
+        return
+      }
       // Freeze what user already said at pause boundary so resumed speech appends instead of overwriting.
       const bufferedComposed = speechComposedRef.current.trim()
       if (bufferedComposed) {
@@ -167,17 +179,26 @@ export default function ChatPage() {
       }
       // Show visible countdown for finalization window (5 seconds).
       setSilenceFinalizeCountdown(5)
-      const countdownInterval = setInterval(() => {
+      speechSilenceCountdownIntervalRef.current = setInterval(() => {
         setSilenceFinalizeCountdown((prev) => {
           if (prev === null || prev <= 1) {
-            clearInterval(countdownInterval)
+            if (speechSilenceCountdownIntervalRef.current) {
+              clearInterval(speechSilenceCountdownIntervalRef.current)
+              speechSilenceCountdownIntervalRef.current = null
+            }
             return null
           }
           return prev - 1
         })
       }, 1000)
       speechSilenceFinalizeTimeoutRef.current = setTimeout(() => {
-        clearInterval(countdownInterval)
+        if (cycleId !== speechSilenceCycleIdRef.current) {
+          return
+        }
+        if (speechSilenceCountdownIntervalRef.current) {
+          clearInterval(speechSilenceCountdownIntervalRef.current)
+          speechSilenceCountdownIntervalRef.current = null
+        }
         setSilenceFinalizeCountdown(null)
         finalizeSpeechInput()
       }, SPEECH_SILENCE_MS)
@@ -397,6 +418,7 @@ export default function ChatPage() {
         message: trimmedHistory[trimmedHistory.length - 1]?.parts?.[0] || "",
         agentPrompt: systemPrompt,
         agentCategory: agent?.category || "",
+        agentConfig: agent ? ensureAgentConfig(agent) : undefined,
         history: trimmedHistory,
       }),
     })
