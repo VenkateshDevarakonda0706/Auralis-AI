@@ -52,6 +52,7 @@ test-results/
 *.log
 *.tmp
 *.swp
+*.tsbuildinfo
 
 # =========================
 # LOCK FILES (KEEP ONE ONLY)
@@ -66,3 +67,18 @@ test-results/
 API/
 secrets/
 private/
+
+# =========================
+# CERTS / KEYS (SENSITIVE)
+# =========================
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# =========================
+# LOCAL DEPLOY / TOOL STATE
+# =========================
+.vercel/
+.turbo/

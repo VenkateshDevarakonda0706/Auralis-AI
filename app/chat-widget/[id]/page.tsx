@@ -83,6 +83,8 @@ export default function ChatWidgetPage() {
   const micStreamRef = useRef<MediaStream | null>(null)
   const queuedMessageRef = useRef<string | null>(null)
   const lastSubmitRef = useRef<{ text: string; at: number } | null>(null)
+  const isAutoModeRef = useRef(true)
+  const pendingAutoPlayTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get agent from URL params
   const agentId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : ''
@@ -105,6 +107,14 @@ export default function ChatWidgetPage() {
   useEffect(() => {
     isVoiceAutoSendRef.current = isVoiceAutoSend
   }, [isVoiceAutoSend])
+
+  useEffect(() => {
+    isAutoModeRef.current = isAutoMode
+    if (!isAutoMode && pendingAutoPlayTimeoutRef.current) {
+      clearTimeout(pendingAutoPlayTimeoutRef.current)
+      pendingAutoPlayTimeoutRef.current = null
+    }
+  }, [isAutoMode])
 
   // Initialize conversation
   useEffect(() => {
@@ -218,6 +228,13 @@ export default function ChatWidgetPage() {
     clearAutoSendInterval()
     setAutoSendCountdown(null)
     setSpeechStatus("idle")
+  }
+
+  function clearPendingAutoPlay() {
+    if (pendingAutoPlayTimeoutRef.current) {
+      clearTimeout(pendingAutoPlayTimeoutRef.current)
+      pendingAutoPlayTimeoutRef.current = null
+    }
   }
 
   function scheduleNoInputTimeout() {
@@ -492,6 +509,7 @@ export default function ChatWidgetPage() {
     recognitionRef.current = recognition
 
     return () => {
+      clearPendingAutoPlay()
       stopCurrentAudioPlayback()
       clearSpeechTimeout()
       clearNoInputTimeout()
@@ -588,6 +606,7 @@ export default function ChatWidgetPage() {
     if (!text) return
 
     // Barge-in: immediately interrupt any active TTS when a new message is sent.
+    clearPendingAutoPlay()
     stopCurrentAudioPlayback()
 
     if (isListening) {
@@ -640,8 +659,13 @@ export default function ChatWidgetPage() {
       setIsGeneratingAudio(false)
       setSpeechStatus("idle")
 
-      if (isAutoMode) {
-        setTimeout(() => {
+      if (isAutoModeRef.current) {
+        clearPendingAutoPlay()
+        pendingAutoPlayTimeoutRef.current = setTimeout(() => {
+          pendingAutoPlayTimeoutRef.current = null
+          if (!isAutoModeRef.current) {
+            return
+          }
           void playMessageAudio(aiMessage.id)
         }, 500)
       }

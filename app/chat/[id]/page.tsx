@@ -55,6 +55,8 @@ export default function ChatPage() {
   const interimTranscriptRef = useRef("")
   const queuedMessageRef = useRef<string | null>(null)
   const lastSubmitRef = useRef<{ text: string; at: number } | null>(null)
+  const isAutoModeRef = useRef(true)
+  const pendingAutoPlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runtimeStateRef = useRef({
     isAutoMode: true,
     isGenerating: false,
@@ -141,6 +143,14 @@ export default function ChatPage() {
       anyAudioPlaying,
     }
   }, [isAutoMode, isGenerating, isGeneratingAudio, anyAudioPlaying])
+
+  useEffect(() => {
+    isAutoModeRef.current = isAutoMode
+    if (!isAutoMode && pendingAutoPlayTimeoutRef.current) {
+      clearTimeout(pendingAutoPlayTimeoutRef.current)
+      pendingAutoPlayTimeoutRef.current = null
+    }
+  }, [isAutoMode])
 
   useEffect(() => {
     isVoiceAutoSendRef.current = isVoiceAutoSend
@@ -231,6 +241,13 @@ export default function ChatPage() {
     clearAutoSendInterval()
     setAutoSendCountdown(null)
     setSpeechStatus("idle")
+  }
+
+  function clearPendingAutoPlay() {
+    if (pendingAutoPlayTimeoutRef.current) {
+      clearTimeout(pendingAutoPlayTimeoutRef.current)
+      pendingAutoPlayTimeoutRef.current = null
+    }
   }
 
   function scheduleNoInputTimeout() {
@@ -456,6 +473,7 @@ export default function ChatPage() {
     }
 
     // Barge-in: sending a new message must interrupt any currently playing TTS immediately.
+    clearPendingAutoPlay()
     stopCurrentAudioPlayback()
 
     if (isGenerating || isGeneratingAudio) {
@@ -513,8 +531,13 @@ export default function ChatPage() {
       setIsGeneratingAudio(false)
       setSpeechStatus("idle")
 
-      if (isAutoMode) {
-        setTimeout(() => {
+      if (isAutoModeRef.current) {
+        clearPendingAutoPlay()
+        pendingAutoPlayTimeoutRef.current = setTimeout(() => {
+          pendingAutoPlayTimeoutRef.current = null
+          if (!isAutoModeRef.current) {
+            return
+          }
           void playMessageAudio(aiMessage.id)
         }, 250)
       }
@@ -703,6 +726,7 @@ export default function ChatPage() {
     recognitionRef.current = recognition
 
     return () => {
+      clearPendingAutoPlay()
       stopCurrentAudioPlayback()
       speechActionRef.current = "none"
       clearSpeechSilenceTimeout()
