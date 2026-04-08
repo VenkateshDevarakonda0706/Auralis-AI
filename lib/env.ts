@@ -3,8 +3,14 @@ const REQUIRED_SERVER_ENV_KEYS = [
   "MURF_API_KEY",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
+  "DATABASE_URL",
+  "NEXTAUTH_URL",
   "NEXTAUTH_SECRET",
 ] as const
+
+const INVALID_SERVER_ENV_PATTERNS: Partial<Record<(typeof REQUIRED_SERVER_ENV_KEYS)[number], RegExp>> = {
+  DATABASE_URL: /\[your-password\]|\[your_password\]|your_password|real_password|replace-with|<password>/i,
+}
 
 type RequiredServerEnvKey = (typeof REQUIRED_SERVER_ENV_KEYS)[number]
 
@@ -12,8 +18,20 @@ export function getMissingServerEnvKeys(env: NodeJS.ProcessEnv = process.env): R
   return REQUIRED_SERVER_ENV_KEYS.filter((key) => !env[key] || String(env[key]).trim().length === 0)
 }
 
+export function getInvalidServerEnvKeys(env: NodeJS.ProcessEnv = process.env): RequiredServerEnvKey[] {
+  return REQUIRED_SERVER_ENV_KEYS.filter((key) => {
+    const value = env[key]
+    const pattern = INVALID_SERVER_ENV_PATTERNS[key]
+    if (!value || !pattern) {
+      return false
+    }
+
+    return pattern.test(String(value))
+  })
+}
+
 export function hasRequiredServerEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  return getMissingServerEnvKeys(env).length === 0
+  return getMissingServerEnvKeys(env).length === 0 && getInvalidServerEnvKeys(env).length === 0
 }
 
 export function maskSecret(value?: string): string {
@@ -30,11 +48,13 @@ export function maskSecret(value?: string): string {
 
 export function getServerEnvStatus(env: NodeJS.ProcessEnv = process.env) {
   const missing = getMissingServerEnvKeys(env)
+  const invalid = getInvalidServerEnvKeys(env)
 
   return {
-    isReady: missing.length === 0,
+    isReady: missing.length === 0 && invalid.length === 0,
     missing,
-    configured: REQUIRED_SERVER_ENV_KEYS.filter((key) => !missing.includes(key)),
+    invalid,
+    configured: REQUIRED_SERVER_ENV_KEYS.filter((key) => !missing.includes(key) && !invalid.includes(key)),
   }
 }
 

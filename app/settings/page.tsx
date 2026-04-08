@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -33,6 +33,39 @@ export default function SettingsPage() {
   const { settings, updateSettings, user, logout } = useApp()
   const { toast } = useToast()
   const [isSaving, setIsSaving] = useState(false)
+  const [responseStyle, setResponseStyle] = useState<"short" | "detailed" | "with examples">("detailed")
+  const [language, setLanguage] = useState("")
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPreferences = async () => {
+      try {
+        const response = await fetch("/api/preferences")
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok || !payload?.success || !payload?.data || !isMounted) {
+          return
+        }
+
+        setResponseStyle(payload.data.response_style || "detailed")
+        setLanguage(payload.data.language || "")
+      } catch {
+        // Keep default values when preferences are unavailable.
+      } finally {
+        if (isMounted) {
+          setIsLoadingPreferences(false)
+        }
+      }
+    }
+
+    loadPreferences()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const handleSettingChange = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     updateSettings({ [key]: value })
@@ -41,16 +74,30 @@ export default function SettingsPage() {
   const handleSaveSettings = async () => {
     setIsSaving(true)
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const response = await fetch("/api/preferences", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          responseStyle,
+          language: language.trim() || undefined,
+        }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.message || "Failed to save preferences")
+      }
+
       toast({
         title: "Settings Saved",
-        description: "Your preferences have been updated successfully.",
+        description: "Your memory preferences have been updated successfully.",
       })
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to save settings. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to save settings. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -239,6 +286,53 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+            {/* Memory Preferences */}
+            <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Database className="w-5 h-5" />
+                  Smart Memory
+                </CardTitle>
+                <CardDescription className="text-gray-300">
+                  Tune how the assistant remembers and answers you.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="response-style" className="text-gray-300">
+                    Response Style
+                  </Label>
+                  <Select value={responseStyle} onValueChange={(value) => setResponseStyle(value as typeof responseStyle)}>
+                    <SelectTrigger className="bg-black/20 border-white/20 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-black/90 border-white/20">
+                      <SelectItem value="short" className="text-white hover:bg-white/10">Short</SelectItem>
+                      <SelectItem value="detailed" className="text-white hover:bg-white/10">Detailed</SelectItem>
+                      <SelectItem value="with examples" className="text-white hover:bg-white/10">With examples</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="language" className="text-gray-300">
+                    Preferred Language
+                  </Label>
+                  <Input
+                    id="language"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    placeholder="English, Spanish, Hindi..."
+                    className="bg-black/20 border-white/20 text-white placeholder:text-gray-500"
+                  />
+                </div>
+
+                {isLoadingPreferences ? (
+                  <p className="text-sm text-gray-400">Loading memory preferences...</p>
+                ) : null}
+              </CardContent>
+            </Card>
+
             {/* Notifications */}
             <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
               <CardHeader>
@@ -273,6 +367,12 @@ export default function SettingsPage() {
                 <CardTitle className="text-white">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <Link href="/profile">
+                  <Button variant="outline" className="w-full border-white/20 text-gray-300 hover:bg-white/10 bg-transparent">
+                    <User className="w-4 h-4 mr-2" />
+                    Open Profile
+                  </Button>
+                </Link>
                 <Button
                   variant="outline"
                   onClick={handleExportData}

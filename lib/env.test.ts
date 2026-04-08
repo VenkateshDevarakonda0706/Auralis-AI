@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { getMissingServerEnvKeys, hasRequiredServerEnv, maskSecret } from "./env"
+import { getInvalidServerEnvKeys, getMissingServerEnvKeys, hasRequiredServerEnv, maskSecret } from "./env"
 
 describe("env utilities", () => {
   it("detects missing required keys", () => {
@@ -8,6 +8,8 @@ describe("env utilities", () => {
       MURF_API_KEY: "def",
       GOOGLE_CLIENT_ID: "",
       GOOGLE_CLIENT_SECRET: "ghi",
+      DATABASE_URL: "postgresql://example",
+      NEXTAUTH_URL: "http://localhost:3000",
       NEXTAUTH_SECRET: undefined,
     } as unknown as NodeJS.ProcessEnv)
 
@@ -21,10 +23,26 @@ describe("env utilities", () => {
       MURF_API_KEY: "def",
       GOOGLE_CLIENT_ID: "ghi",
       GOOGLE_CLIENT_SECRET: "jkl",
+      DATABASE_URL: "postgresql://example",
+      NEXTAUTH_URL: "http://localhost:3000",
       NEXTAUTH_SECRET: "mno",
     } as unknown as NodeJS.ProcessEnv)
 
     expect(ok).toBe(true)
+  })
+
+  it("detects invalid placeholder values", () => {
+    const invalid = getInvalidServerEnvKeys({
+      GOOGLE_AI_API_KEY: "abc",
+      MURF_API_KEY: "def",
+      GOOGLE_CLIENT_ID: "ghi",
+      GOOGLE_CLIENT_SECRET: "jkl",
+      DATABASE_URL: "postgresql://postgres:[YOUR-PASSWORD]@db.example.supabase.co:5432/postgres",
+      NEXTAUTH_URL: "http://localhost:3000",
+      NEXTAUTH_SECRET: "mno",
+    } as unknown as NodeJS.ProcessEnv)
+
+    expect(invalid).toContain("DATABASE_URL")
   })
 
   it("masks secrets safely", () => {

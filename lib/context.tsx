@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react'
+import { signIn, signOut, useSession } from 'next-auth/react'
 import { Agent, User, Conversation, Analytics, AppSettings } from './types'
 import { storage } from './storage'
 import { api } from './api'
@@ -231,6 +232,7 @@ interface AppProviderProps {
 }
 
 export function AppProvider({ children }: AppProviderProps) {
+  const { data: session, status } = useSession()
   const [state, dispatch] = useReducer(appReducer, initialState)
 
   // Load initial data from storage
@@ -275,6 +277,31 @@ export function AppProvider({ children }: AppProviderProps) {
     loadInitialData()
   }, [])
 
+  useEffect(() => {
+    if (session?.user) {
+      const email = session.user.email || ""
+      dispatch({
+        type: 'SET_USER',
+        payload: {
+          id: session.user.id || email || 'session-user',
+          email,
+          name: session.user.name || email.split('@')[0] || 'User',
+          avatar: session.user.image || undefined,
+          plan: 'free',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          lastLogin: new Date().toISOString(),
+        },
+      })
+      return
+    }
+
+    if (status === 'unauthenticated') {
+      storage.clearUser()
+      dispatch({ type: 'SET_USER', payload: null })
+    }
+  }, [session, status])
+
   // Save data to storage when state changes
   useEffect(() => {
     if (state.user) {
@@ -306,20 +333,18 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch({ type: 'SET_ERROR', payload: null })
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      const user: User = {
-        id: '1',
+      const result = await signIn('credentials', {
         email,
-        name: email.split('@')[0],
-        plan: 'free',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString(),
+        password,
+        callbackUrl: '/dashboard',
+        redirect: false,
+      })
+
+      if (result?.error) {
+        dispatch({ type: 'SET_ERROR', payload: 'Login failed' })
+        return false
       }
 
-      dispatch({ type: 'SET_USER', payload: user })
       return true
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: 'Login failed' })
@@ -330,6 +355,7 @@ export function AppProvider({ children }: AppProviderProps) {
   }, [])
 
   const logout = useCallback(() => {
+    void signOut({ redirect: false })
     storage.clearUser()
     dispatch({ type: 'CLEAR_DATA' })
   }, [])

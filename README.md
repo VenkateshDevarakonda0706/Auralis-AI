@@ -14,18 +14,19 @@ A cutting-edge voice AI platform combining **Google Gemini** conversational inte
 
 ## ✨ Key Features
 
-| Feature | Description |
-|---------|-------------|
-| 🎤 **Voice Synthesis** | 100+ premium voices via Murf AI with real-time generation and live preview |
-| 🧠 **Conversational AI** | Context-aware responses powered by Google Gemini with memory persistence |
-| 🤖 **Agent Builder** | Create custom AI personalities with prompt engineering and voice profiles |
-| 🔄 **Auto Mode** | Speech-to-speech flows with real-time speech recognition and automatic replies |
-| 📊 **Analytics** | Track conversations, response times, and voice usage patterns |
-| 🔐 **Enterprise Ready** | Secure API, scalable architecture, and team collaboration tools |
+| Feature                  | Description                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| 🎤 **Voice Synthesis**   | 100+ premium voices via Murf AI with real-time generation and live preview     |
+| 🧠 **Conversational AI** | Context-aware responses powered by Google Gemini with memory persistence       |
+| 🤖 **Agent Builder**     | Create custom AI personalities with prompt engineering and voice profiles      |
+| 🔄 **Auto Mode**         | Speech-to-speech flows with real-time speech recognition and automatic replies |
+| 📊 **Analytics**         | Track conversations, response times, and voice usage patterns                  |
+| 🔐 **Enterprise Ready**  | Secure API, scalable architecture, and team collaboration tools                |
 
 ## 🛠️ Tech Stack
 
 ### Frontend & UI
+
 - **Next.js 15** — React framework with App Router
 - **TypeScript** — Type-safe development
 - **Tailwind CSS** — Utility-first styling
@@ -33,12 +34,14 @@ A cutting-edge voice AI platform combining **Google Gemini** conversational inte
 - **Lucide React** — Beautiful icon library
 
 ### AI & Backend
+
 - **Google Generative AI** — Advanced language models
 - **Murf AI API** — Professional voice synthesis
 - **Next.js API Routes** — Serverless endpoints
 - **Axios** — HTTP client
 
 ### State & Storage
+
 - **React Context** — Global state management
 - **Local Storage** — Persistent data
 - **Custom Hooks** — Reusable logic
@@ -60,6 +63,14 @@ npm install
 cp env.example .env.local
 # Add your API keys to .env.local
 
+# Required auth and DB values:
+# DATABASE_URL=postgresql://postgres:REAL_PASSWORD@db.<project-ref>.supabase.co:5432/postgres
+# NEXTAUTH_URL=http://localhost:3000
+# NEXTAUTH_SECRET=<long-random-secret>
+# GOOGLE_CLIENT_ID=<google-oauth-client-id>
+# GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
+# Optional on IPv4-only networks: DATABASE_URL_POOLER + DATABASE_URL_USE_POOLER=1
+
 # 4️⃣ Start the dev server
 npm run dev
 
@@ -69,12 +80,12 @@ npm run dev
 
 ### Prerequisites
 
-| Requirement | Version |
-|-------------|---------|
-| **Node.js** | 18+ |
-| **npm/yarn/pnpm** | Latest |
+| Requirement           | Version                          |
+| --------------------- | -------------------------------- |
+| **Node.js**           | 18+                              |
+| **npm/yarn/pnpm**     | Latest                           |
 | **Google AI API Key** | [Get one](https://ai.google.dev) |
-| **Murf AI API Key** | [Get one](https://murf.ai) |
+| **Murf AI API Key**   | [Get one](https://murf.ai)       |
 
 ## 📁 Project Structure
 
@@ -92,12 +103,14 @@ Auralis-AI/
 ## 🎯 Core Features
 
 ### Agent Management
+
 - **Create Agents**: Build custom AI assistants with specific personalities
 - **Voice Selection**: Choose from 100+ premium voices
 - **Prompt Templates**: Pre-built templates for common use cases
 - **Category Organization**: Organize agents by purpose
 
 ### Chat Interface
+
 - **Real-time Chat**: Instant message exchange
 - **Voice Input**: Speech-to-text functionality
 - **Voice Output**: Text-to-speech responses
@@ -105,12 +118,14 @@ Auralis-AI/
 - **Message History**: Persistent conversation storage
 
 ### Analytics Dashboard
+
 - **Performance Metrics**: Track conversation and message counts
 - **Response Times**: Monitor AI response speed
 - **Voice Usage**: Analyze voice preferences
 - **Daily Statistics**: Time-based performance data
 
 ### Settings & Configuration
+
 - **User Preferences**: Customize app behavior
 - **Theme Selection**: Light, dark, or system theme
 - **Voice Settings**: Configure audio preferences
@@ -119,6 +134,7 @@ Auralis-AI/
 ## 🔧 API Endpoints
 
 ### Agent Management
+
 - `GET /api/agents` - Get all agents
 - `POST /api/agents` - Create new agent
 - `GET /api/agents/[id]` - Get specific agent
@@ -126,27 +142,33 @@ Auralis-AI/
 - `DELETE /api/agents/[id]` - Delete agent
 
 ### AI Services
+
 - `POST /api/generate-response` - Generate AI response
 - `POST /api/text-to-speech` - Convert text to speech
 
 ### Analytics
+
 - `GET /api/analytics` - Get analytics data
 - `POST /api/analytics` - Update analytics
 
 ### Voice Management
+
 - `GET /api/voices` - Get available voices
 
 ### System
+
 - `GET /api/health` - Health check
 
 ## 🎨 UI Components
 
 The project uses a custom component library built with:
+
 - **Radix UI**: Accessible primitives
 - **Tailwind CSS**: Utility-first styling
 - **Custom Design System**: Consistent theming
 
 ### Key Components
+
 - **Cards**: Information containers
 - **Buttons**: Interactive elements
 - **Forms**: Input and validation
@@ -183,11 +205,13 @@ npm run test:coverage
 ## 🚀 Deployment
 
 ### Vercel (Recommended)
+
 1. Connect your GitHub repository to Vercel
 2. Set environment variables in Vercel dashboard
 3. Deploy automatically on push to main branch
 
 ### Other Platforms
+
 - **Netlify**: Static site deployment
 - **Railway**: Full-stack deployment
 - **AWS**: Custom infrastructure
@@ -202,13 +226,13 @@ npm run test:coverage
 
 ## 📝 License & Acknowledgments
 
-| Aspect | Details |
-|--------|---------|
-| **License** | MIT — [View License](LICENSE) |
-| **Murf AI** | Voice synthesis platform |
-| **Google AI** | Generative AI capabilities |
-| **Next.js** | React framework excellence |
-| **Tailwind CSS** | Utility-first styling |
+| Aspect           | Details                       |
+| ---------------- | ----------------------------- |
+| **License**      | MIT — [View License](LICENSE) |
+| **Murf AI**      | Voice synthesis platform      |
+| **Google AI**    | Generative AI capabilities    |
+| **Next.js**      | React framework excellence    |
+| **Tailwind CSS** | Utility-first styling         |
 
 ## 🤝 Contributing
 
@@ -227,6 +251,7 @@ git push origin feature/amazing-feature
 
 # 5. Open a Pull Request
 ```
+
 <!--
 ## 📞 Support & Community
 
@@ -241,14 +266,16 @@ git push origin feature/amazing-feature
 ## 🎉 Major Project 2026
 
 Built as a Major Project submission showcasing the power of combining:
+
 - ✅ **Real-time Voice AI** — Expressive TTS
 - ✅ **Intelligent Responses** — Context-aware conversations
 - ✅ **Production-Ready** — Scalable & secure architecture
 - ✅ **Beautiful UX** — Modern, intuitive interface
 
 ---
+
 <!--
 **Made with ❤️ by [Pravehaspa](https://github.com/Pravehaspa)**
 -->
 
-*Transform your ideas into voice experiences with Auralis AI* 🚀
+_Transform your ideas into voice experiences with Auralis AI_ 🚀

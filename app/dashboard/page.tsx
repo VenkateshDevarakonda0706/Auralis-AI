@@ -159,6 +159,9 @@ export default function Dashboard() {
               <Link href="/create" className="text-gray-300 hover:text-white transition-colors">
                 Create
               </Link>
+              <Link href="/profile" className="text-gray-300 hover:text-white transition-colors">
+                Profile
+              </Link>
               <Link href="/monitoring" className="text-gray-300 hover:text-white transition-colors">
                 Monitoring
               </Link>
@@ -180,6 +183,11 @@ export default function Dashboard() {
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
               </Button>
+              <Link href="/profile">
+                <Button variant="outline" className="border-white/20 text-gray-300 hover:bg-white/10 bg-transparent">
+                  Profile
+                </Button>
+              </Link>
               <Link href="/monitoring">
                 <Button variant="outline" className="border-white/20 text-gray-300 hover:bg-white/10 bg-transparent">
                   <Code className="w-4 h-4 mr-2" />
