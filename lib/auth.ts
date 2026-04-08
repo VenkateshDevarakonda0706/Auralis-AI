@@ -3,7 +3,7 @@ import type { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 import bcrypt from "bcryptjs"
-import { ensureUserPreferences, findUserByEmail, getOrCreateGoogleUser, findUserById } from "@/lib/server/auth-repository"
+import { findUserByEmail, findUserById, syncUserWithDatabase } from "@/lib/server/auth-repository"
 import { toPublicDbError } from "@/lib/server/db-errors"
 
 export const authOptions: NextAuthOptions = {
@@ -33,13 +33,19 @@ export const authOptions: NextAuthOptions = {
                         return null
                     }
 
-                    await ensureUserPreferences(user.id)
-
-                    return {
+                    const syncedUser = await syncUserWithDatabase({
                         id: user.id,
                         name: user.name,
                         email: user.email,
-                        image: user.image || undefined,
+                        image: user.image,
+                        provider: user.provider,
+                    })
+
+                    return {
+                        id: syncedUser.id,
+                        name: syncedUser.name,
+                        email: syncedUser.email,
+                        image: syncedUser.image || undefined,
                     }
                 } catch (error) {
                     const dbError = toPublicDbError(error)
@@ -97,17 +103,17 @@ export const authOptions: NextAuthOptions = {
                 const email = token.email || user?.email || (profile as { email?: string } | undefined)?.email
                 if (email) {
                     try {
-                        const googleUser = await getOrCreateGoogleUser({
+                        const syncedUser = await syncUserWithDatabase({
+                            id: token.id || token.sub || account.providerAccountId,
                             name: token.name || user?.name || email.split("@")[0],
                             email,
-                            googleId: account.providerAccountId,
                             image: (profile as { picture?: string } | undefined)?.picture || user?.image || null,
+                            provider: "google",
                         })
-                        await ensureUserPreferences(googleUser.id)
-                        token.id = googleUser.id
-                        token.sub = googleUser.id
-                        token.name = googleUser.name
-                        token.email = googleUser.email
+                        token.id = syncedUser.id
+                        token.sub = syncedUser.id
+                        token.name = syncedUser.name
+                        token.email = syncedUser.email
                     } catch (error) {
                         const dbError = toPublicDbError(error)
                         console.error("Google user sync failed:", dbError.message)

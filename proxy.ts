@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt"
 
 const protectedPrefixes = ["/chat", "/dashboard", "/settings", "/profile"]
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isProtectedPage = protectedPrefixes.some((prefix) => pathname.startsWith(prefix))
   const isPreferencesApi = pathname.startsWith("/api/preferences")
