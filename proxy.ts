@@ -1,10 +1,25 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { getToken } from "next-auth/jwt"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 
 const protectedPrefixes = ["/chat", "/dashboard", "/settings", "/profile"]
+const AUTH_DISABLED = true
 
 export async function proxy(request: NextRequest) {
+  if (AUTH_DISABLED) {
+    return NextResponse.next()
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { success: false, error: "Server Misconfigured", message: "Supabase environment variables are missing" },
+      { status: 500 },
+    )
+  }
+
   const { pathname } = request.nextUrl
   const isProtectedPage = protectedPrefixes.some((prefix) => pathname.startsWith(prefix))
   const isPreferencesApi = pathname.startsWith("/api/preferences")
@@ -14,9 +29,32 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
-  if (token) {
-    return NextResponse.next()
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get(name: string) {
+        return request.cookies.get(name)?.value
+      },
+      set(name: string, value: string, options: CookieOptions) {
+        response.cookies.set({ name, value, ...options })
+      },
+      remove(name: string, options: CookieOptions) {
+        response.cookies.set({ name, value: "", ...options, maxAge: 0 })
+      },
+    },
+  })
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (user) {
+    return response
   }
 
   if (isPreferencesApi || isProfileApi) {

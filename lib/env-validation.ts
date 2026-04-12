@@ -9,13 +9,11 @@ import { z } from "zod"
 const EnvSchema = z.object({
   // Required
   GOOGLE_AI_API_KEY: z.string().min(1, "GOOGLE_AI_API_KEY is required"),
-  NEXTAUTH_SECRET: z.string().min(1, "NEXTAUTH_SECRET is required"),
-  GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
-  GOOGLE_CLIENT_SECRET: z.string().min(1, "GOOGLE_CLIENT_SECRET is required"),
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
   MURF_API_KEY: z.string().min(1, "MURF_API_KEY is required"),
 
   // Optional
-  NEXTAUTH_URL: z.string().url().optional(),
   GEMINI_MODEL: z.string().optional(),
   TELEMETRY_ENDPOINT: z.string().url().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).optional(),
@@ -67,9 +65,8 @@ export function validateEnv(): Env {
     console.warn("Environment validation warning:", error)
     return {
       GOOGLE_AI_API_KEY: process.env.GOOGLE_AI_API_KEY || "development-key",
-      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || "development-secret",
-      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "development-id",
-      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "development-secret",
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "development-anon-key",
       MURF_API_KEY: process.env.MURF_API_KEY || "development-key",
       NODE_ENV: process.env.NODE_ENV,
     }

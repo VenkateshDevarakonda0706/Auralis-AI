@@ -9,10 +9,8 @@ export type DbUser = {
   id: string
   name: string
   email: string
-  password: string | null
   image: string | null
   provider: string
-  google_id: string | null
   created_at: string
   updated_at: string
 }
@@ -76,14 +74,14 @@ async function getPreferencesTableName(): Promise<"preferences" | "user_preferen
 
 function userSelectSql(includeImage: boolean) {
   return includeImage
-    ? "SELECT id, name, email, password, image, provider, google_id, created_at, updated_at"
-    : "SELECT id, name, email, password, provider, google_id, created_at, updated_at"
+    ? "SELECT id, name, email, image, provider, created_at, updated_at"
+    : "SELECT id, name, email, provider, created_at, updated_at"
 }
 
 function userReturnSql(includeImage: boolean) {
   return includeImage
-    ? "RETURNING id, name, email, password, image, provider, google_id, created_at, updated_at"
-    : "RETURNING id, name, email, password, provider, google_id, created_at, updated_at"
+    ? "RETURNING id, name, email, image, provider, created_at, updated_at"
+    : "RETURNING id, name, email, provider, created_at, updated_at"
 }
 
 function mapPreferencesRow(
@@ -148,9 +146,7 @@ function mapUserRow<T extends { image?: string | null }>(row: T | undefined | nu
     id: user.id,
     name: user.name,
     email: user.email,
-    password: user.password,
     provider: user.provider,
-    google_id: user.google_id,
     created_at: user.created_at,
     updated_at: user.updated_at,
     image: includeImage ? row.image ?? null : null,
@@ -185,73 +181,6 @@ export async function findUserById(id: string): Promise<DbUser | null> {
   )
 
   return mapUserRow(result.rows[0], includeImage)
-}
-
-export async function createPasswordUser(input: {
-  name: string
-  email: string
-  passwordHash: string
-  image?: string | null
-}): Promise<DbUser> {
-  const includeImage = await hasUsersImageColumn()
-  const columns = includeImage ? "name, email, password, image, provider" : "name, email, password, provider"
-  const values = includeImage ? "$1, $2, $3, $4, 'credentials'" : "$1, $2, $3, 'credentials'"
-  const params = includeImage ? [input.name.trim(), input.email.toLowerCase(), input.passwordHash, input.image || null] : [input.name.trim(), input.email.toLowerCase(), input.passwordHash]
-  const result = await query<DbUser>(
-    `
-      INSERT INTO users (${columns})
-      VALUES (${values})
-      ${userReturnSql(includeImage)}
-    `,
-    params,
-  )
-
-  return mapUserRow(result.rows[0], includeImage) as DbUser
-}
-
-export async function upsertGoogleUser(input: {
-  name: string
-  email: string
-  googleId?: string | null
-  image?: string | null
-}): Promise<DbUser> {
-  const includeImage = await hasUsersImageColumn()
-  const insertColumns = includeImage ? "name, email, password, image, provider, google_id" : "name, email, password, provider, google_id"
-  const values = includeImage ? "$1, $2, NULL, $4, 'google', $3" : "$1, $2, NULL, 'google', $3"
-  const params = includeImage
-    ? [input.name?.trim() || input.email.split("@")[0], input.email.toLowerCase(), input.googleId || null, input.image || null]
-    : [input.name?.trim() || input.email.split("@")[0], input.email.toLowerCase(), input.googleId || null]
-  const result = await query<DbUser>(
-    `
-      INSERT INTO users (${insertColumns})
-      VALUES (${values})
-      ON CONFLICT (email)
-      DO UPDATE SET
-        name = EXCLUDED.name,
-        google_id = COALESCE(users.google_id, EXCLUDED.google_id),
-        provider = 'google',
-        ${includeImage ? "image = COALESCE(users.image, EXCLUDED.image)," : ""}
-        updated_at = NOW()
-      ${userReturnSql(includeImage)}
-    `,
-    params,
-  )
-
-  return mapUserRow(result.rows[0], includeImage) as DbUser
-}
-
-export async function getOrCreateGoogleUser(input: {
-  name: string
-  email: string
-  googleId?: string | null
-  image?: string | null
-}): Promise<DbUser> {
-  const existing = await findUserByEmail(input.email)
-  if (existing) {
-    return upsertGoogleUser(input)
-  }
-
-  return upsertGoogleUser(input)
 }
 
 export async function getUserPreferences(userId: string): Promise<DbUserPreferences | null> {
@@ -293,16 +222,17 @@ export async function syncUserWithDatabase(input: SyncUserInput): Promise<DbUser
   const userColumns = includeImage ? "id, name, email, image, provider" : "id, name, email, provider"
   const userValues = includeImage ? "$1, $2, $3, $4, $5" : "$1, $2, $3, $4"
   const userParams = includeImage
-    ? [input.id, input.name?.trim() || "User", input.email.toLowerCase(), input.image || null, input.provider || "credentials"]
-    : [input.id, input.name?.trim() || "User", input.email.toLowerCase(), input.provider || "credentials"]
+    ? [input.id, input.name?.trim() || "User", input.email.toLowerCase(), input.image || null, input.provider || "email"]
+    : [input.id, input.name?.trim() || "User", input.email.toLowerCase(), input.provider || "email"]
 
   const syncedUserResult = await query<DbUser>(
     `
       INSERT INTO users (${userColumns})
       VALUES (${userValues})
-      ON CONFLICT (email)
+      ON CONFLICT (id)
       DO UPDATE SET
         name = EXCLUDED.name,
+        email = EXCLUDED.email,
         provider = EXCLUDED.provider,
         ${includeImage ? "image = COALESCE(EXCLUDED.image, users.image)," : ""}
         updated_at = NOW()
@@ -316,34 +246,16 @@ export async function syncUserWithDatabase(input: SyncUserInput): Promise<DbUser
     throw new Error("Failed to sync user")
   }
 
-  try {
-    await upsertUserPreferences({
-      userId: syncedUser.id,
-      theme: "dark",
-      language: "en",
-      notifications: true,
-      responseStyle: "detailed",
-      voiceEnabled: true,
-      volumeLevel: 1,
-      lastLogin: new Date().toISOString(),
-    })
-  } catch (error) {
-    console.warn("Preference sync failed, retrying once:", error)
-    try {
-      await upsertUserPreferences({
-        userId: syncedUser.id,
-        theme: "dark",
-        language: "en",
-        notifications: true,
-        responseStyle: "detailed",
-        voiceEnabled: true,
-        volumeLevel: 1,
-        lastLogin: new Date().toISOString(),
-      })
-    } catch (retryError) {
-      console.error("Preference sync failed after retry:", retryError)
-    }
-  }
+  await upsertUserPreferences({
+    userId: syncedUser.id,
+    theme: "dark",
+    language: "en",
+    notifications: true,
+    responseStyle: "detailed",
+    voiceEnabled: true,
+    volumeLevel: 1,
+    lastLogin: new Date().toISOString(),
+  }).catch(() => null)
 
   return syncedUser
 }
@@ -367,24 +279,6 @@ export async function updateUserProfile(input: {
   )
 
   return mapUserRow(result.rows[0], includeImage) as DbUser
-}
-
-export async function updateUserPassword(input: {
-  userId: string
-  passwordHash: string
-}): Promise<DbUser> {
-  const result = await query<DbUser>(
-    `
-      UPDATE users
-      SET password = $2,
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING id, name, email, password, image, provider, google_id, created_at, updated_at
-    `,
-    [input.userId, input.passwordHash],
-  )
-
-  return result.rows[0]
 }
 
 export async function upsertUserPreferences(input: {

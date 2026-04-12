@@ -84,3 +84,4 @@ private/
 .turbo/
 .vercel
 .env*.local
+supabase/explanation/

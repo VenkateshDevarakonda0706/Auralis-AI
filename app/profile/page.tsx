@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { signOut } from "next-auth/react"
 import { ArrowLeft, CheckCircle2, Loader2, LogOut, Shield, User, KeyRound, Lock, Globe } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -13,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 type ProfileData = {
   id: string
@@ -252,7 +252,11 @@ export default function ProfilePage() {
   }
 
   const handleLogout = async () => {
-    await signOut({ callbackUrl: "/login" })
+    const supabase = getSupabaseBrowserClient()
+    if (supabase) {
+      await supabase.auth.signOut()
+    }
+    window.location.href = "/create"
   }
 
   const handleLogoutAllDevices = () => {

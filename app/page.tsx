@@ -105,9 +105,9 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="flex gap-3">
-              <Link href="/login">
+              <Link href="/create">
                 <Button variant="outline" className="border-white/20 text-gray-300 hover:bg-white/10 bg-transparent">
-                  Sign In
+                  Start Free
                 </Button>
               </Link>
               <Link href="/dashboard">
@@ -135,7 +135,7 @@ export default function HomePage() {
             Gemini's conversational AI for seamless, natural interactions.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/dashboard">
+            <Link href="/create">
               <Button
                 size="lg"
                 className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0 px-8 py-6 text-lg"

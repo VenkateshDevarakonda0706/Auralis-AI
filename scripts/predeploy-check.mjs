@@ -43,11 +43,9 @@ loadLocalEnvFile()
 const required = [
   "GOOGLE_AI_API_KEY",
   "MURF_API_KEY",
-  "GOOGLE_CLIENT_ID",
-  "GOOGLE_CLIENT_SECRET",
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "DATABASE_URL",
-  "NEXTAUTH_URL",
-  "NEXTAUTH_SECRET",
 ]
 
 const missing = required.filter((key) => !process.env[key] || process.env[key].trim().length === 0)

@@ -6,26 +6,21 @@ describe("env utilities", () => {
     const missing = getMissingServerEnvKeys({
       GOOGLE_AI_API_KEY: "abc",
       MURF_API_KEY: "def",
-      GOOGLE_CLIENT_ID: "",
-      GOOGLE_CLIENT_SECRET: "ghi",
+      NEXT_PUBLIC_SUPABASE_URL: "",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ghi",
       DATABASE_URL: "postgresql://example",
-      NEXTAUTH_URL: "http://localhost:3000",
-      NEXTAUTH_SECRET: undefined,
     } as unknown as NodeJS.ProcessEnv)
 
-    expect(missing).toContain("GOOGLE_CLIENT_ID")
-    expect(missing).toContain("NEXTAUTH_SECRET")
+    expect(missing).toContain("NEXT_PUBLIC_SUPABASE_URL")
   })
 
   it("returns true when all required keys exist", () => {
     const ok = hasRequiredServerEnv({
       GOOGLE_AI_API_KEY: "abc",
       MURF_API_KEY: "def",
-      GOOGLE_CLIENT_ID: "ghi",
-      GOOGLE_CLIENT_SECRET: "jkl",
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "jkl",
       DATABASE_URL: "postgresql://example",
-      NEXTAUTH_URL: "http://localhost:3000",
-      NEXTAUTH_SECRET: "mno",
     } as unknown as NodeJS.ProcessEnv)
 
     expect(ok).toBe(true)
@@ -35,11 +30,9 @@ describe("env utilities", () => {
     const invalid = getInvalidServerEnvKeys({
       GOOGLE_AI_API_KEY: "abc",
       MURF_API_KEY: "def",
-      GOOGLE_CLIENT_ID: "ghi",
-      GOOGLE_CLIENT_SECRET: "jkl",
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "jkl",
       DATABASE_URL: "postgresql://postgres:[YOUR-PASSWORD]@db.example.supabase.co:5432/postgres",
-      NEXTAUTH_URL: "http://localhost:3000",
-      NEXTAUTH_SECRET: "mno",
     } as unknown as NodeJS.ProcessEnv)
 
     expect(invalid).toContain("DATABASE_URL")

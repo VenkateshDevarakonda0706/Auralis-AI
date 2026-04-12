@@ -1,11 +1,11 @@
 "use client"
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react'
-import { signIn, signOut, useSession } from 'next-auth/react'
 import { Agent, User, Conversation, Analytics, AppSettings } from './types'
 import { storage } from './storage'
 import { api } from './api'
 import { normalizeAgent } from './agent-domain'
+import { getSupabaseBrowserClient, getSupabaseBrowserEnvError } from './supabase/client'
 
 // State interface
 interface AppState {
@@ -232,7 +232,6 @@ interface AppProviderProps {
 }
 
 export function AppProvider({ children }: AppProviderProps) {
-  const { data: session, status } = useSession()
   const [state, dispatch] = useReducer(appReducer, initialState)
 
   // Load initial data from storage
@@ -278,29 +277,47 @@ export function AppProvider({ children }: AppProviderProps) {
   }, [])
 
   useEffect(() => {
-    if (session?.user) {
-      const email = session.user.email || ""
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      dispatch({ type: 'SET_ERROR', payload: getSupabaseBrowserEnvError() || 'Supabase is not configured' })
+      return
+    }
+
+    const syncUser = async () => {
+      const { data } = await supabase.auth.getUser()
+      const authUser = data.user
+
+      if (!authUser?.email) {
+        storage.clearUser()
+        dispatch({ type: 'SET_USER', payload: null })
+        return
+      }
+
       dispatch({
         type: 'SET_USER',
         payload: {
-          id: session.user.id || email || 'session-user',
-          email,
-          name: session.user.name || email.split('@')[0] || 'User',
-          avatar: session.user.image || undefined,
+          id: authUser.id,
+          email: authUser.email,
+          name: typeof authUser.user_metadata?.name === 'string' ? authUser.user_metadata.name : authUser.email.split('@')[0],
+          avatar: typeof authUser.user_metadata?.avatar_url === 'string' ? authUser.user_metadata.avatar_url : undefined,
           plan: 'free',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           lastLogin: new Date().toISOString(),
         },
       })
-      return
     }
 
-    if (status === 'unauthenticated') {
-      storage.clearUser()
-      dispatch({ type: 'SET_USER', payload: null })
+    void syncUser()
+
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      void syncUser()
+    })
+
+    return () => {
+      listener.subscription.unsubscribe()
     }
-  }, [session, status])
+  }, [])
 
   // Save data to storage when state changes
   useEffect(() => {
@@ -333,17 +350,26 @@ export function AppProvider({ children }: AppProviderProps) {
     dispatch({ type: 'SET_ERROR', payload: null })
 
     try {
-      const result = await signIn('credentials', {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) {
+        dispatch({ type: 'SET_ERROR', payload: getSupabaseBrowserEnvError() || 'Supabase is not configured' })
+        return false
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        callbackUrl: '/dashboard',
-        redirect: false,
       })
 
-      if (result?.error) {
+      if (error) {
         dispatch({ type: 'SET_ERROR', payload: 'Login failed' })
         return false
       }
+
+      await fetch('/api/profile/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => null)
 
       return true
     } catch (error) {
@@ -355,9 +381,17 @@ export function AppProvider({ children }: AppProviderProps) {
   }, [])
 
   const logout = useCallback(() => {
-    void signOut({ redirect: false })
-    storage.clearUser()
-    dispatch({ type: 'CLEAR_DATA' })
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      storage.clearUser()
+      dispatch({ type: 'CLEAR_DATA' })
+      return
+    }
+
+    void supabase.auth.signOut().finally(() => {
+      storage.clearUser()
+      dispatch({ type: 'CLEAR_DATA' })
+    })
   }, [])
 
   const loadAgents = useCallback(async () => {
